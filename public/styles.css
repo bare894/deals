@@ -64,6 +64,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .nav { display: flex; align-items: center; gap: 6px; margin-left: auto; }
 .nav a, .nav button.linkish { text-decoration: none; padding: 8px 12px; border-radius: 8px; color: var(--muted); font-weight: 600; background: none; border: 0; cursor: pointer; white-space: nowrap; }
 .nav a:hover, .nav a.active, .nav button.linkish:hover { color: var(--text); background: var(--surface-2); }
+.nav a.btn-primary, .nav a.btn-primary:hover { color: var(--accent-ink); background: var(--accent); padding: 6px 12px; margin: 0 4px; }
 .user-chip { display: inline-flex; align-items: center; gap: 6px; }
 .avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); display: inline-grid; place-items: center; font-weight: 800; font-size: 13px; text-transform: uppercase; flex: none; }
 
@@ -120,6 +121,14 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .row-scroller > * { scroll-snap-align: start; }
 @media (min-width: 1100px) { .row-scroller { grid-auto-columns: calc((100% - 4 * 14px) / 5); } }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+@media (max-width: 760px) {
+  .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .row-scroller { grid-auto-columns: 46%; gap: 10px; }
+  .card-title { font-size: 14px; }
+  .price { font-size: 16px; }
+  .card-foot .age { display: none; }
+  .page-head h1 { font-size: 22px; }
+}
 
 .card { position: relative; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; display: flex; flex-direction: column; box-shadow: var(--shadow); transition: transform 0.12s, box-shadow 0.12s; }
 .card:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgb(0 0 0 / 0.08); }
