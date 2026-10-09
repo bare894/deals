@@ -5,14 +5,19 @@
   --border: #e3e2de;
   --text: #1d1d1b;
   --muted: #6b6a66;
-  --accent: #e8590c;
+  /* Brand palette (sharedeals.in logo): pink #EC0276 + navy #010A5E */
+  --brand-pink: #ec0276;
+  --brand-navy: #010a5e;
+  --accent: var(--brand-pink);
+  --accent-hover: #cc0266;
+  --accent-text: var(--brand-pink);
   --accent-ink: #ffffff;
-  --accent-soft: #fff1e6;
+  --accent-soft: #fde6f0;
   --price: #1a7f37;
   --danger: #c92a2a;
   --danger-soft: #fff0f0;
-  --up: #e8590c;
-  --down: #4263eb;
+  --up: var(--brand-pink);
+  --down: var(--brand-navy);
   --shadow: 0 1px 2px rgb(0 0 0 / 0.05), 0 2px 8px rgb(0 0 0 / 0.04);
   --radius: 12px;
   --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
@@ -26,14 +31,16 @@
     --border: #353532;
     --text: #ecebe7;
     --muted: #a3a29c;
-    --accent: #ff7a2e;
-    --accent-ink: #1a0d04;
-    --accent-soft: #3a2415;
+    --accent: var(--brand-pink);
+    --accent-hover: #ff1f8a;
+    --accent-text: #ff5aa5;
+    --accent-ink: #ffffff;
+    --accent-soft: #3b1426;
     --price: #4ccf6d;
     --danger: #ff6b6b;
     --danger-soft: #3a1b1b;
-    --up: #ff7a2e;
-    --down: #7b93ff;
+    --up: var(--brand-pink);
+    --down: #6b78e6;
     --shadow: 0 1px 2px rgb(0 0 0 / 0.4);
     color-scheme: dark;
   }
@@ -65,9 +72,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .nav { display: flex; align-items: center; gap: 6px; margin-left: auto; }
 .nav a, .nav button.linkish { text-decoration: none; padding: 8px 12px; border-radius: 8px; color: var(--muted); font-weight: 600; background: none; border: 0; cursor: pointer; white-space: nowrap; }
 .nav a:hover, .nav a.active, .nav button.linkish:hover { color: var(--text); background: var(--surface-2); }
-.nav a.btn-primary, .nav a.btn-primary:hover { color: var(--accent-ink); background: var(--accent); padding: 6px 12px; margin: 0 4px; }
+.nav a.btn-primary { color: var(--accent-ink); background: var(--accent); padding: 6px 12px; margin: 0 4px; }
 .user-chip { display: inline-flex; align-items: center; gap: 6px; }
-.avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); display: inline-grid; place-items: center; font-weight: 800; font-size: 13px; text-transform: uppercase; flex: none; }
+.avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--accent-soft); color: var(--accent-text); display: inline-grid; place-items: center; font-weight: 800; font-size: 13px; text-transform: uppercase; flex: none; }
 
 /* ---------- mobile tab bar ---------- */
 .tabbar { display: none; }
@@ -76,7 +83,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   .tabbar { display: flex; position: fixed; bottom: 0; left: 0; right: 0; z-index: 20; background: var(--surface); border-top: 1px solid var(--border); padding: 6px 4px calc(6px + env(safe-area-inset-bottom)); }
   .tabbar a { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 1px; text-decoration: none; color: var(--muted); font-size: 11px; font-weight: 600; padding: 4px 0; }
   .tabbar a .ico { font-size: 20px; line-height: 1.1; }
-  .tabbar a.active { color: var(--accent); }
+  .tabbar a.active { color: var(--accent-text); }
   .tabbar a.post .ico { background: var(--accent); color: var(--accent-ink); border-radius: 10px; width: 34px; height: 26px; display: grid; place-items: center; font-size: 18px; }
   .topbar-inner { gap: 10px; }
   .logo .logo-full { display: none; }
@@ -89,12 +96,12 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .btn:hover { background: var(--surface-2); }
 .btn:disabled { opacity: 0.55; cursor: not-allowed; }
 .btn-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
-.btn-primary:hover { background: var(--accent); filter: brightness(1.06); }
+.nav a.btn-primary:hover, .btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
 .btn-danger { color: var(--danger); border-color: var(--danger); background: transparent; }
 .btn-danger:hover { background: var(--danger-soft); }
 .btn-sm { padding: 5px 10px; font-size: 13px; border-radius: 8px; }
 .btn-lg { padding: 12px 22px; font-size: 16px; }
-.btn.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.btn.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-text); }
 
 .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
 .field label { font-weight: 600; font-size: 14px; }
@@ -114,7 +121,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .section { margin-bottom: 32px; }
 .section-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 12px; }
 .section-head h2 { margin: 0; font-size: 20px; letter-spacing: -0.01em; }
-.section-head .see-all { margin-left: auto; font-weight: 600; color: var(--accent); text-decoration: none; white-space: nowrap; }
+.section-head .see-all { margin-left: auto; font-weight: 600; color: var(--accent-text); text-decoration: none; white-space: nowrap; }
 .chips { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 18px; scrollbar-width: none; }
 .chip { flex: none; padding: 6px 14px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); text-decoration: none; font-weight: 600; font-size: 14px; color: var(--muted); }
 .chip.active, .chip:hover { color: var(--text); border-color: var(--text); }
