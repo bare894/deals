@@ -244,6 +244,7 @@ const actions = {
     try {
       const r = await api(`/api/deals/${id}/vote`, { method: 'POST', body: { value } });
       updateVoteWidgets(id, r.myVote, r.score);
+      track('vote', { deal_id: id, value: value === 1 ? 'up' : value === -1 ? 'down' : 'clear' });
     } catch (err) {
       if (err.status === 401) return goLogin();
       toast(err.message, 'error');
@@ -259,6 +260,7 @@ const actions = {
       btn.setAttribute('aria-pressed', !on);
       btn.querySelector('.lbl').textContent = on ? 'Save' : 'Saved';
       toast(on ? 'Removed from your wishlist' : 'Saved to your wishlist');
+      if (!on) track('add_to_wishlist', { items: [{ item_id: String(id) }] });
     } catch (err) {
       toast(err.message, 'error');
     }
@@ -278,6 +280,7 @@ const actions = {
     if (navigator.share) {
       try {
         await navigator.share({ title, url });
+        track('share', { method: 'native', content_type: 'deal', item_id: btn.dataset.id });
         return;
       } catch (err) {
         if (err.name === 'AbortError') return;
@@ -286,6 +289,7 @@ const actions = {
     try {
       await navigator.clipboard.writeText(url);
       toast('Link copied to clipboard');
+      track('share', { method: 'copy_link', content_type: 'deal', item_id: btn.dataset.id });
     } catch {
       openModal(
         html`<form><h2>Share this deal</h2><div class="field"><input class="input" value="${url}" readonly></div>
@@ -309,6 +313,8 @@ const actions = {
 };
 
 document.addEventListener('click', (e) => {
+  const tracked = e.target.closest('a[data-track="get_deal"]');
+  if (tracked) track('get_deal', { deal_id: tracked.dataset.dealId, store: tracked.dataset.store, link_url: tracked.href });
   const actionEl = e.target.closest('[data-action]');
   if (actionEl && actions[actionEl.dataset.action]) {
     e.preventDefault();
@@ -385,6 +391,11 @@ const ROUTES = [
   [/^\/admin(?:\/(\w+))?$/, adminPage],
 ];
 
+// ------------------------------------------------------------ analytics (GA4, see /analytics.js)
+
+const track = (event, params = {}) => window.gtag?.('event', event, params);
+const trackPageView = () => track('page_view', { page_location: location.href, page_title: document.title });
+
 function navigate(url, { replace = false } = {}) {
   history[replace ? 'replaceState' : 'pushState']({}, '', url);
   renderRoute();
@@ -410,9 +421,11 @@ async function renderRoute() {
       if (err.status === 401) return goLogin();
       setPage('Error', emptyState(err.status === 404 ? 'Not found' : 'Something went wrong', err.message, html`<a class="btn" href="/">Back to home</a>`));
     }
+    if (seq === routeSeq) trackPageView();
     return;
   }
   setPage('Not found', emptyState('Page not found', "We couldn't find that page.", html`<a class="btn" href="/">Back to home</a>`));
+  trackPageView();
 }
 
 function setPage(title, content) {
@@ -549,7 +562,7 @@ async function detailPage({ params, alive }) {
           </div>
           <div class="actions">
             ${voteWidget(d, { large: true })}
-            ${best ? html`<a class="btn btn-primary btn-lg" href="${best.url}" target="_blank" rel="noopener noreferrer nofollow sponsored ugc">Get deal on ${best.store} ↗</a>` : ''}
+            ${best ? html`<a class="btn btn-primary btn-lg" href="${best.url}" target="_blank" rel="noopener noreferrer nofollow sponsored ugc" data-track="get_deal" data-deal-id="${d.id}" data-store="${best.store}">Get deal on ${best.store} ↗</a>` : ''}
           </div>
           <div class="actions" style="margin-top:0">
             ${removed ? '' : html`<button class="btn ${d.bookmarked ? 'on' : ''}" data-action="bookmark" data-id="${d.id}" aria-pressed="${d.bookmarked}">♡ <span class="lbl">${d.bookmarked ? 'Saved' : 'Save'}</span></button>`}
@@ -737,6 +750,7 @@ async function submitPage({ query, alive }) {
         url: r.url,
         onSubmit: async (body) => {
           const { deal } = await api('/api/deals', { method: 'POST', body });
+          track('post_deal', { deal_id: deal.id, store: deal.store, category: deal.category?.name });
           toast('Your deal is live!');
           navigate(`/deals/${deal.id}`, { replace: true });
         },
@@ -887,6 +901,7 @@ function authForm(sel, endpoint, query) {
       const { user } = await api(endpoint, { method: 'POST', body: Object.fromEntries(new FormData(form)) });
       state.user = user;
       renderChrome();
+      track(endpoint.endsWith('/register') ? 'sign_up' : 'login', { method: 'email' });
       toast(`Welcome, @${user.handle}!`);
       navigate(nextUrl(query), { replace: true });
     } catch (err) {

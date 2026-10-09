@@ -34,7 +34,11 @@ const MIME = {
 
 const SECURITY_HEADERS = {
   'content-security-policy':
-    "default-src 'self'; img-src 'self' https: http: data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+    "default-src 'self'; img-src 'self' https: http: data:; style-src 'self' 'unsafe-inline'; " +
+    // Google Analytics: gtag.js loads from googletagmanager.com and sends hits to google-analytics.com.
+    "script-src 'self' https://www.googletagmanager.com; " +
+    "connect-src 'self' https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com; " +
+    "frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
   'x-content-type-options': 'nosniff',
   'referrer-policy': 'strict-origin-when-cross-origin',
   'x-frame-options': 'DENY',
