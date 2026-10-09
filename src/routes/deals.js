@@ -62,8 +62,13 @@ export function registerDealRoutes({ route, db, repo, rateLimit, scraper, resolv
       if (existing) throw storeConflictError(existing);
     }
     const result = await scraper(link.resolved.href);
-    const matches = dealId ? [] : await repo.findMatches(result.fields, { storeKey: link.storeKey });
-    return { ok: result.ok, reason: result.reason, fields: result.fields, url: link.url.href, storeKey: link.storeKey, matches };
+    const fields = { ...result.fields };
+    // The scraper names one of the site's categories; the form needs its id (admins can hide/rename them).
+    if (fields.category) {
+      fields.categoryId = (await db.get('SELECT id FROM categories WHERE lower(name) = lower(?) AND active = 1', fields.category))?.id ?? null;
+    }
+    const matches = dealId ? [] : await repo.findMatches(fields, { storeKey: link.storeKey });
+    return { ok: result.ok, reason: result.reason, fields, url: link.url.href, storeKey: link.storeKey, matches };
   });
 
   route('POST', '/api/deals', { auth: true, active: true }, async ({ body, user }) => {

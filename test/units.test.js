@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { canonicalizeUrl, parseDealUrl } from '../src/canonicalize.js';
-import { extractDealFields, isPrivateIp, parsePrice, storeFromHost, autoPopulate } from '../src/scrape.js';
+import { extractDealFields, isPrivateIp, parsePrice, storeFromHost, autoPopulate, findMrp, guessCategory } from '../src/scrape.js';
 import { hotScore, rankHot, rankForYou, categoryAffinity } from '../src/ranking.js';
 import { clientIp } from '../src/http.js';
 
@@ -141,4 +141,45 @@ test('client IP: socket address by default; behind trusted proxies, the hop they
   assert.equal(clientIp(req('1.1.1.1, 203.0.113.9'), 1), '203.0.113.9');
   assert.equal(clientIp(req('1.1.1.1, 203.0.113.9, 172.16.0.2'), 2), '203.0.113.9');
   assert.equal(clientIp(req(''), 1), '10.0.0.5');
+});
+
+test('MRP: visible label, Amazon strike-through, embedded JSON; implausible values rejected', () => {
+  // Amazon.in buy box (no JSON-LD on Amazon)
+  const amazon = `<span class="a-size-small aok-offscreen apex-basisprice-offscreen-label">M.R.P.: ₹55,999.00</span>`;
+  assert.equal(findMrp(amazon, 51430), 55999);
+  assert.equal(findMrp('<span class="a-price a-text-price" data-a-strike="true" data-a-color="secondary"><span class="a-offscreen">₹4,490.00</span>', 1099), 4490);
+  // Flipkart / Myntra embedded state; a "-₹8,000 off" label next to "MRP" is not the MRP
+  assert.equal(findMrp('"label":"MRP"}},"x":{"value":{"text":"-₹8,000"}} … "mrp":55999,"fsp":47999', 47999), 55999);
+  assert.equal(findMrp('"price":{"mrp":{"currency":"INR","value":2999}}', 1199), 2999);
+  assert.equal(findMrp('MRP ₹999', 1999), null); // below the selling price
+  assert.equal(findMrp('"mrp":9999999', 1999), null); // another product's price, not 5000× this one
+  // Large pages full of near-misses must stay fast (no catastrophic regex backtracking).
+  const t = Date.now();
+  findMrp(`${'MRP '.repeat(5000)}${'<span class="x">'.repeat(20000)}`, 100);
+  assert.ok(Date.now() - t < 500, 'findMrp is linear-time');
+});
+
+test('category: most specific breadcrumb wins, then the title', () => {
+  assert.equal(guessCategory(['Electronics', 'Mobiles & Accessories', 'Smartphones & Basic Mobiles', 'Smartphones']), 'Mobiles');
+  assert.equal(guessCategory(['Electronics', 'Wearable Technology', 'Smart Watches']), 'Electronics');
+  assert.equal(guessCategory(['Clothing & Accessories', 'Men', 'Watches']), 'Fashion');
+  assert.equal(guessCategory(['mobile']), 'Mobiles'); // Flipkart's Product.category
+  assert.equal(guessCategory(['Home & Kitchen', 'Kitchen & Home Appliances', 'Mixer Grinders']), 'Home & Kitchen');
+  assert.equal(guessCategory([], 'Puma Men Softride Running Shoes'), 'Fashion');
+  assert.equal(guessCategory([], 'Something unrecognisable'), null);
+});
+
+test('Amazon.in pages: price, MRP, title, image and category without JSON-LD', () => {
+  const html = `<html><head><title>Google Pixel 10a : Amazon.in: Electronics</title></head><body>
+    <div id="wayfinding-breadcrumbs_feature_div"><ul><li><a href="/e">Electronics</a></li><li><a href="/m">Mobiles &amp; Accessories</a></li><li><a href="/s">Smartphones</a></li></ul></div>
+    <span id="productTitle" class="a-size-large"> Google Pixel 10a 5G (Fog, 256GB) </span>
+    <img alt="" src="https://m.media-amazon.com/images/I/small.jpg" data-old-hires="https://m.media-amazon.com/images/I/big.jpg" id="landingImage">
+    <span class="a-price priceToPay" data-a-size="xl"><span class="a-offscreen"> </span><span class="a-price-whole">51,430</span></span>
+    <span class="aok-offscreen">M.R.P.: ₹55,999.00</span></body></html>`;
+  const f = extractDealFields(html, 'https://www.amazon.in/dp/B0GP8SY9MB');
+  assert.equal(f.title, 'Google Pixel 10a 5G (Fog, 256GB)');
+  assert.equal(f.imageUrl, 'https://m.media-amazon.com/images/I/big.jpg');
+  assert.equal(f.price, 51430);
+  assert.equal(f.fullPrice, 55999);
+  assert.equal(f.category, 'Mobiles');
 });

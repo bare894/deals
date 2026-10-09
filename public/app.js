@@ -632,8 +632,9 @@ function commentItem(c) {
 
 // ============================================================ pages: submit / edit (§9, §10)
 
+/** Exact same link already live (not just the same product). */
 function duplicateNotice(dup) {
-  return html`<div class="form-error">This deal has already been posted.
+  return html`<div class="form-error">This exact link has already been posted.
     ${dup?.id ? html`<a href="/deals/${dup.id}">View the existing deal: ${dup.title}</a>` : ''}</div>`;
 }
 
@@ -703,7 +704,7 @@ function bindDealForm(form, { url, onSubmit }) {
     try {
       await onSubmit(body);
     } catch (err) {
-      errBox.innerHTML = String(err.status === 409 ? duplicateNotice(err.data.duplicate) : html`<div class="form-error">${err.message}</div>`);
+      errBox.innerHTML = String(err.data?.duplicate ? duplicateNotice(err.data.duplicate) : html`<div class="form-error">${err.message}</div>`);
       errBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
     } finally {
       btn.disabled = false;
@@ -714,25 +715,26 @@ function bindDealForm(form, { url, onSubmit }) {
 async function submitPage({ query, alive }) {
   if (!state.user) return goLogin();
   const initialUrl = query.get('url') || '';
+  // What we know about the link being posted: the prefill result, plus anything already typed.
+  const s = { url: '', fields: {}, ok: false, reason: null, matches: [], draft: null };
+  const page = (content) => setPage('Post a deal', html`<div class="page-head"><h1>Post a deal</h1></div><div class="panel">${content}</div>`);
+  const urlChip = () => html`<div class="url-chip"><span>🔗</span><code>${s.url}</code><button type="button" class="linkish" id="change-url">Change</button></div>`;
+  const bindChangeUrl = () => $('#change-url').addEventListener('click', () => showUrlStep(s.url));
+
   const showUrlStep = (value = '', error = '') => {
-    setPage(
-      'Post a deal',
-      html`<div class="page-head"><h1>Post a deal</h1></div>
-      <div class="panel">
-        <form id="url-form">
-          ${error}
-          <div class="field"><label for="u-url">Paste the deal link</label>
-            <input id="u-url" name="url" type="url" required placeholder="https://www.flipkart.com/… or a Myntra, Amazon, AJIO, Nykaa, Meesho link" value="${value}" autofocus>
-            <span class="hint">We'll check it hasn't been posted already and try to fill in the title, image, price, and store for you.</span></div>
-          <button class="btn btn-primary" id="url-btn">Continue</button>
-        </form>
-      </div>`,
-    );
+    page(html`<form id="url-form">
+      ${error}
+      <div class="field"><label for="u-url">Paste the deal link</label>
+        <input id="u-url" name="url" type="url" required placeholder="https://www.flipkart.com/… or a Myntra, Amazon, AJIO, Nykaa, Meesho link" value="${value}" autofocus>
+        <span class="hint">We'll check whether this product is already on ShareDeals and try to fill in the title, image, price, and store for you.</span></div>
+      <button class="btn btn-primary" id="url-btn">Continue</button>
+    </form>`);
     $('#url-form').addEventListener('submit', (e) => {
       e.preventDefault();
       prefill($('#u-url').value.trim());
     });
   };
+
   const prefill = async (url) => {
     const btn = $('#url-btn');
     if (btn) {
@@ -742,25 +744,123 @@ async function submitPage({ query, alive }) {
     try {
       const r = await api('/api/deals/prefill', { method: 'POST', body: { url } });
       if (!alive()) return;
-      const notice = r.ok ? html`<div class="notice">✓ We filled in what we could find — please double-check everything before posting.</div>` : html`<div class="notice">Couldn't auto-fill details${r.reason ? html` (${r.reason})` : ''} — please complete manually.</div>`;
-      const v = { url: r.url, ...r.fields };
-      setPage('Post a deal', html`<div class="page-head"><h1>Post a deal</h1></div><div class="panel">${dealForm(v, { mode: 'create', notice })}</div>`);
-      $('#change-url').addEventListener('click', () => showUrlStep(r.url));
-      bindDealForm($('#deal-form'), {
-        url: r.url,
-        onSubmit: async (body) => {
-          const { deal } = await api('/api/deals', { method: 'POST', body });
-          track('post_deal', { deal_id: deal.id, store: deal.store, category: deal.category?.name });
-          toast('Your deal is live!');
-          navigate(`/deals/${deal.id}`, { replace: true });
-        },
-      });
+      Object.assign(s, { url: r.url, fields: r.fields || {}, ok: r.ok, reason: r.reason, matches: r.matches || [], draft: null });
+      if (s.matches.length) showMatches();
+      else showNewDealForm({ confirmNew: false });
     } catch (err) {
       if (!alive()) return;
       if (err.status === 401) return goLogin();
-      showUrlStep(url, err.status === 409 ? duplicateNotice(err.data.duplicate) : html`<div class="form-error">${err.message}</div>`);
+      showUrlStep(url, err.data?.duplicate ? duplicateNotice(err.data.duplicate) : html`<div class="form-error">${err.message}</div>`);
     }
   };
+
+  /** Same product already posted from another store: add this link to that deal instead of a second post. */
+  function showMatches({ fromSubmit = false } = {}) {
+    const store = s.draft?.store || s.fields.store || 'store';
+    const high = s.matches.some((m) => m.confidence === 'high');
+    page(html`
+      ${urlChip()}
+      <h2 class="match-title">${high ? 'This product is already on ShareDeals' : 'Is this one of these products?'}</h2>
+      <p class="muted" style="margin-top:0">
+        ${fromSubmit ? 'Before posting a new deal: ' : ''}Add your ${store} link to the existing deal instead of posting it again.
+        Shoppers see every store's price side by side on one deal, and your link stays yours.
+      </p>
+      <div class="matches">
+        ${s.matches.map((m) => {
+          const d = m.deal;
+          return html`<div class="match-card ${m.confidence}">
+            <div class="mini-deal">
+              <img src="${d.imageUrl || placeholder(d.title)}" data-label="${d.title.slice(0, 20)}" alt="">
+              <div class="grow">
+                <a class="mini-title" href="/deals/${d.id}" target="_blank" rel="noopener">${d.title}</a>
+                <div class="small muted">${d.price != null ? html`${money(d.price)} on ` : ''}${d.store}${d.offerCount > 1 ? ` + ${d.offerCount - 1} more` : ''} · score ${d.score} · by @${d.poster.handle}</div>
+              </div>
+            </div>
+            <div class="match-meta">
+              <span class="badge ${m.confidence === 'high' ? 'match-high' : ''}">${m.confidence === 'high' ? 'Very likely the same product' : 'Possibly the same product'}</span>
+              ${m.storeListed
+                ? html`<span class="small muted">${m.storeListed.store} is already listed here by @${m.storeListed.by} at ${money(m.storeListed.price)}. <a href="/deals/${d.id}">View deal</a></span>`
+                : html`<button class="btn btn-primary btn-sm" data-attach="${d.id}">Add my ${store} link to this deal</button>`}
+            </div>
+          </div>`;
+        })}
+      </div>
+      <div class="match-footer"><button class="btn" id="not-same">No, it's a different product — post a new deal</button></div>`);
+    bindChangeUrl();
+    $('#not-same').addEventListener('click', () => showNewDealForm({ confirmNew: true }));
+    for (const b of $$('[data-attach]')) {
+      b.addEventListener('click', () => showAttachForm(s.matches.find((m) => m.deal.id === Number(b.dataset.attach)).deal));
+    }
+  }
+
+  /** Add this store link (with its own price) to an existing deal. */
+  function showAttachForm(deal) {
+    const v = { ...s.fields, ...(s.draft || {}) };
+    page(html`<form id="offer-form" novalidate>
+      ${urlChip()}
+      <p class="muted" style="margin:0 0 8px">Adding your store link to <a href="/deals/${deal.id}" target="_blank" rel="noopener"><strong>${deal.title}</strong></a></p>
+      <div id="form-error"></div>
+      <div class="field-row">
+        <div class="field"><label for="o-price">Deal price (₹)</label><input id="o-price" name="price" inputmode="decimal" required value="${v.price ?? ''}" placeholder="0 for free"></div>
+        <div class="field"><label for="o-full">MRP (₹)</label><input id="o-full" name="fullPrice" inputmode="decimal" value="${v.fullPrice ?? ''}" placeholder="Optional"></div>
+      </div>
+      <div class="field"><label for="o-store">Store</label><input id="o-store" name="store" maxlength="80" required value="${v.store || ''}"></div>
+      <div class="field"><label for="o-note">Offer details (optional)</label><input id="o-note" name="note" maxlength="300" placeholder="Bank/card offer, coupon code, delivery notes…"></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button type="button" class="btn" id="back">Back</button>
+        <button class="btn btn-primary" id="attach-btn">Add to deal</button>
+      </div>
+    </form>`);
+    bindChangeUrl();
+    $('#back').addEventListener('click', () => showMatches());
+    const form = $('#offer-form');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = $('#attach-btn');
+      const errBox = $('#form-error');
+      errBox.innerHTML = '';
+      btn.disabled = true;
+      const body = { ...Object.fromEntries(new FormData(form)), url: s.url, gtin: s.fields.gtin, mpn: s.fields.mpn };
+      try {
+        await api(`/api/deals/${deal.id}/offers`, { method: 'POST', body });
+        track('add_store_link', { deal_id: deal.id, store: body.store });
+        toast(`Added your ${body.store} link — thanks!`);
+        navigate(`/deals/${deal.id}`, { replace: true });
+      } catch (err) {
+        errBox.innerHTML = String(err.data?.duplicate ? duplicateNotice(err.data.duplicate) : html`<div class="form-error">${err.message}</div>`);
+        btn.disabled = false;
+      }
+    });
+  }
+
+  function showNewDealForm({ confirmNew }) {
+    const notice = s.draft
+      ? ''
+      : s.ok
+        ? html`<div class="notice">✓ We filled in what we could find — please double-check everything before posting.</div>`
+        : html`<div class="notice">Couldn't auto-fill details${s.reason ? html` (${s.reason})` : ''} — please complete manually.</div>`;
+    page(dealForm({ ...s.fields, ...(s.draft || {}), url: s.url }, { mode: 'create', notice }));
+    bindChangeUrl();
+    bindDealForm($('#deal-form'), {
+      url: s.url,
+      onSubmit: async (body) => {
+        try {
+          const { deal } = await api('/api/deals', { method: 'POST', body: { ...body, confirmNew } });
+          track('post_deal', { deal_id: deal.id, store: deal.store, category: deal.category?.name });
+          toast('Your deal is live!');
+          navigate(`/deals/${deal.id}`, { replace: true });
+        } catch (err) {
+          // The server spotted the same product (e.g. after the title was edited): offer to add the link instead.
+          if (err.status === 409 && err.data?.matches?.length) {
+            Object.assign(s, { draft: body, matches: err.data.matches });
+            return showMatches({ fromSubmit: true });
+          }
+          throw err;
+        }
+      },
+    });
+  }
+
   showUrlStep(initialUrl);
   if (initialUrl) prefill(initialUrl); // e.g. opened from the browser extension
 }

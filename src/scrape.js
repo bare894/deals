@@ -216,12 +216,92 @@ export function storeFromHost(hostname) {
   return name.charAt(0).toUpperCase() + name.slice(1);
 }
 
+// ------------------------------------------------------------ retailer fallbacks
+// Indian retailers rarely publish MRP or category as structured data, and Amazon.in has no
+// JSON-LD at all, so these read the visible labels and the page's embedded app state.
+
+const amount = (s) => parsePrice(String(s).replace(/,/g, ''));
+
+// In order of trust: the visible "M.R.P." label, Amazon's struck-through price, embedded JSON keys.
+const MRP_PATTERNS = [
+  /\bM\.?R\.?P\.?(?:[^₹<\d]|<[^<>]{0,200}>){0,160}?(?:₹|Rs\.?|INR)\s*([\d,]+(?:\.\d{1,2})?)/g,
+  /data-a-strike="true"[^>]*>\s*<span class="a-offscreen">\s*₹\s*([\d,]+(?:\.\d{1,2})?)/g,
+  /"(?:mrp|MRP|maximumRetailPrice|maxRetailPrice|listPrice|list_price|originalPrice|original_price|strikeOffPrice|strikethroughPrice|wasPrice)"\s*:\s*(?:\{[^{}]{0,80}?"(?:value|amount|decimalValue)"\s*:\s*)?"?([\d,]+(?:\.\d{1,2})?)/g,
+];
+
+/** First plausible MRP: above the selling price, and not more than 20× it (so not another product's price). */
+export function findMrp(html, price) {
+  for (const re of MRP_PATTERNS) {
+    for (const m of html.matchAll(re)) {
+      const v = amount(m[1]);
+      if (v == null || v <= 0) continue;
+      if (price == null || (v > price && v <= price * 20)) return v;
+    }
+  }
+  return null;
+}
+
+function amazonFields(html) {
+  const priceToPay = html.match(/priceToPay[\s\S]{0,600}?class="a-price-whole">([\d,]+)/) || html.match(/id="corePrice[\s\S]{0,1500}?class="a-price-whole">([\d,]+)/);
+  const title = html.match(/id="productTitle"[^>]*>([^<]+)</);
+  const img = html.match(/<img[^>]*id="landingImage"[^>]*>/);
+  const crumbs = html.match(/id="wayfinding-breadcrumbs_feature_div"([\s\S]{0,6000}?)<\/ul>/);
+  return {
+    price: priceToPay ? amount(priceToPay[1]) : null,
+    title: title ? decodeEntities(title[1]).trim() : null,
+    image: img ? attr(img[0], 'data-old-hires') || attr(img[0], 'src') : null,
+    breadcrumbs: crumbs ? [...crumbs[1].matchAll(/<a[^>]*>([^<]+)<\/a>/g)].map((m) => decodeEntities(m[1]).trim()) : [],
+  };
+}
+
+function jsonLdBreadcrumbs(html) {
+  for (const [, json] of html.matchAll(/<script[^>]*type\s*=\s*["']?application\/ld\+json["']?[^>]*>([\s\S]*?)<\/script>/gi)) {
+    try {
+      for (const node of walkJsonLd(JSON.parse(json.trim()))) {
+        if (hasType(node, 'BreadcrumbList')) {
+          return [].concat(node.itemListElement || []).map((e) => e?.name || e?.item?.name).filter(Boolean).map(String);
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  return [];
+}
+
+// Site categories (see DEFAULT_CATEGORIES in db.js). Checked in order, so specific beats generic
+// ("Smart Watches" → Electronics before "Watches" → Fashion).
+const CATEGORY_RULES = [
+  ['Mobiles', /\b(mobiles?|smart ?phones?|mobile phones?|handsets?|basic mobiles?)\b/i],
+  ['Electronics', /\bsmart ?(watch|watches|band)\b/i],
+  ['Gaming', /\b(video games?|gaming|play ?station|ps[45]|xbox|nintendo|consoles?)\b/i],
+  ['Beauty & Personal Care', /\b(beauty|make-?up|skin ?care|hair ?care|fragrances?|perfumes?|personal care|grooming|cosmetics|sunscreens?|foundations?|shampoos?)\b/i],
+  ['Grocery', /\b(grocery|groceries|gourmet|foods?|beverages?|snacks|staples|dals?|pulses|atta|rice)\b/i],
+  ['Toys & Kids', /\b(toys?|baby|kids|children|infants?)\b/i],
+  ['Travel', /\b(luggage|suitcases?|travel|trolley bags?|duffel)\b/i],
+  ['Fashion', /\b(fashion|clothing|apparel|footwear|shoes|sneakers|sandals|kurtas?|kurtis?|sarees?|jeans|t-?shirts?|shirts?|dresses|watches|jewell?ery|handbags|eyewear|sunglasses|ethnic wear|innerwear)\b/i],
+  ['Home & Kitchen', /\b(home|kitchen|furniture|appliances?|bed ?sheets?|bedding|d[eé]cor|furnishings?|cookware|mixer|grinder|washing machines?|refrigerators?|air conditioners?|vacuum)\b/i],
+  ['Electronics', /\b(electronics|headphones?|earphones?|earbuds|speakers?|laptops?|computers?|televisions?|tvs?|cameras?|tablets?|wearables?|monitors?|kindle|e-?readers?|chargers?|power ?banks?)\b/i],
+  ['Apps & Services', /\b(apps?|software|subscriptions?|gift cards?|recharge)\b/i],
+];
+
+/** Map breadcrumb/category labels (most specific last) and the title onto a site category name. */
+export function guessCategory(labels, title = '') {
+  for (const label of [...labels].reverse()) {
+    for (const [name, re] of CATEGORY_RULES) if (re.test(label)) return name;
+  }
+  for (const [name, re] of CATEGORY_RULES) if (re.test(title)) return name;
+  return null;
+}
+
 export function extractDealFields(html, pageUrl) {
   const meta = metaTags(html);
   const product = findProduct(html);
   const url = new URL(pageUrl);
 
-  let title = product?.name || meta['og:title'] || meta['twitter:title'];
+  const amazon = /(^|\.)amazon\.(in|com)$/.test(url.hostname) ? amazonFields(html) : null;
+
+  let title = product?.name || meta['og:title'] || meta['twitter:title'] || amazon?.title;
   if (!title) {
     const t = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
     if (t) title = decodeEntities(t[1]).replace(/\s+/g, ' ').trim();
@@ -229,7 +309,7 @@ export function extractDealFields(html, pageUrl) {
 
   let image = first(product?.image);
   if (image && typeof image === 'object') image = image.url || image.contentUrl;
-  image = image || meta['og:image'] || meta['og:image:url'] || meta['og:image:secure_url'] || meta['twitter:image'];
+  image = image || meta['og:image'] || meta['og:image:url'] || meta['og:image:secure_url'] || meta['twitter:image'] || amazon?.image;
   if (image) {
     try {
       image = new URL(decodeEntities(image), url).href;
@@ -252,9 +332,16 @@ export function extractDealFields(html, pageUrl) {
       if (hp > price) fullPrice = hp;
     }
   }
-  price ??= parsePrice(meta['product:price:amount'] ?? meta['og:price:amount'] ?? meta['product:sale_price:amount'] ?? meta.price);
+  price ??= parsePrice(meta['product:price:amount'] ?? meta['og:price:amount'] ?? meta['product:sale_price:amount'] ?? meta.price) ?? amazon?.price ?? null;
   fullPrice ??= parsePrice(meta['product:original_price:amount'] ?? meta['product:retail_price:amount']);
   if (fullPrice != null && price != null && fullPrice <= price) fullPrice = null;
+  fullPrice ??= findMrp(html, price);
+
+  const productCategory = [].concat(product?.category ?? []).map((c) => (typeof c === 'object' ? c?.name : c)).filter(Boolean).map(String);
+  const category = guessCategory(
+    [...jsonLdBreadcrumbs(html), ...(amazon?.breadcrumbs || []), ...productCategory, meta['product:category'] || ''].filter(Boolean),
+    title || '',
+  );
 
   const store = meta['og:site_name'] || storeFromHost(url.hostname);
 
@@ -269,6 +356,7 @@ export function extractDealFields(html, pageUrl) {
     price,
     fullPrice,
     store: String(store).slice(0, 80),
+    category,
     gtin,
     mpn,
   };
@@ -277,7 +365,7 @@ export function extractDealFields(html, pageUrl) {
 /** Fetch + extract. Never throws for scrape failures — returns { ok:false, reason } instead (PRD §9.1). */
 export async function autoPopulate(rawUrl, fetcher = safeFetch) {
   const url = parseDealUrl(rawUrl);
-  const fallback = { title: '', imageUrl: '', price: null, fullPrice: null, store: storeFromHost(url.hostname), gtin: null, mpn: null };
+  const fallback = { title: '', imageUrl: '', price: null, fullPrice: null, store: storeFromHost(url.hostname), category: null, gtin: null, mpn: null };
   try {
     const res = await fetcher(url);
     const ct = String(res.headers?.['content-type'] || '');

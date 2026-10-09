@@ -10,6 +10,7 @@ import { registerAuthRoutes } from './routes/auth.js';
 import { registerDealRoutes } from './routes/deals.js';
 import { registerOfferRoutes } from './routes/offers.js';
 import { registerAdminRoutes } from './routes/admin.js';
+import { registerHealthRoutes } from './routes/health.js';
 import { createOAuth, oauthConfigFromEnv } from './oauth.js';
 
 export { HttpError };
@@ -73,6 +74,7 @@ export function createApp({
   registerDealRoutes(ctx);
   registerOfferRoutes(ctx);
   registerAdminRoutes(ctx);
+  registerHealthRoutes(ctx);
 
   // ------------------------------------------------------------ responses
 

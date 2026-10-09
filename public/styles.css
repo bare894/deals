@@ -283,3 +283,16 @@ td.actions-cell .btn + .btn { margin-left: 6px; }
 .btn-facebook:hover { background: #166fe5; }
 .or-divider { display: flex; align-items: center; gap: 12px; margin: 18px 0 6px; color: var(--muted); font-size: 13px; }
 .or-divider::before, .or-divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+/* ---------- posting: same product already on the site ---------- */
+.match-title { margin: 4px 0 6px; font-size: 20px; }
+.matches { display: grid; gap: 12px; margin: 16px 0; }
+.match-card { border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; display: grid; gap: 10px; background: var(--surface); }
+.match-card.high { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.mini-deal { display: flex; gap: 12px; align-items: center; min-width: 0; }
+.mini-deal img { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; flex: none; background: var(--surface-2); }
+.mini-deal .grow { min-width: 0; }
+.mini-title { font-weight: 600; text-decoration: none; color: var(--text); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.match-meta { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.badge.match-high { background: var(--accent-soft); color: var(--accent-text); border-color: var(--accent); }
+.match-footer { border-top: 1px solid var(--border); padding-top: 14px; display: flex; justify-content: flex-end; }
