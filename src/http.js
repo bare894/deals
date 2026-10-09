@@ -40,7 +40,19 @@ export function intParam(v, def, { min = 1, max = Infinity } = {}) {
 }
 
 export function isUniqueViolation(err) {
-  return /UNIQUE constraint failed/i.test(String(err?.message));
+  return err?.code === '23505'; // Postgres unique_violation
+}
+
+/**
+ * The visitor's IP, for rate limits. Behind a reverse proxy (Railway, Caddy) the socket address
+ * is the proxy's, so with TRUST_PROXY=<number of proxies> we take the address the outermost
+ * trusted proxy appended to X-Forwarded-For. Entries further left are client-supplied and ignored.
+ */
+export function clientIp(req, trustedHops = Number(process.env.TRUST_PROXY || 0)) {
+  const socketIp = req.socket.remoteAddress;
+  if (!trustedHops) return socketIp;
+  const chain = String(req.headers['x-forwarded-for'] || '').split(',').map((s) => s.trim()).filter(Boolean);
+  return chain[chain.length - trustedHops] || socketIp;
 }
 
 export function makeRateLimiter(limits, enabled = true) {

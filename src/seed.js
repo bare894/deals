@@ -1,8 +1,8 @@
-// Demo data (India). Run directly (`npm run seed`) to wipe and reseed data/deals.db.
+// Demo data (India). Run directly (`npm run seed`) to wipe and reseed the database
+// (DATABASE_URL if set, otherwise the local data/pglite).
 import path from 'node:path';
-import { mkdirSync, rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { openDb, ensureCategories, tx } from './db.js';
+import { openDb, ensureCategories, resetDb, tx } from './db.js';
 import { hashPassword } from './auth.js';
 import { canonicalizeUrl, hashUrl, registrableDomain } from './canonicalize.js';
 import { createRepo } from './repo.js';
@@ -170,46 +170,54 @@ function mulberry32(seed) {
   };
 }
 
-export function seed(db) {
-  ensureCategories(db);
+export async function seed(db) {
+  await ensureCategories(db);
   const repo = createRepo(db);
   const rand = mulberry32(42);
   const now = Date.now();
   const H = 3_600_000;
-  const cat = Object.fromEntries(db.prepare('SELECT id, name FROM categories').all().map((c) => [c.name, c.id]));
+  const cat = Object.fromEntries((await db.all('SELECT id, name FROM categories')).map((c) => [c.name, c.id]));
   const pw = hashPassword(DEMO_PASSWORD);
 
-  tx(db, () => {
-    const userIds = USERS.map(([handle, email, role], i) =>
-      Number(db.prepare('INSERT INTO users (email, handle, password_hash, role, created_at) VALUES (?, ?, ?, ?, ?)').run(email, handle, pw, role, now - (60 - i) * 24 * H).lastInsertRowid),
-    );
+  await tx(db, async () => {
+    const userIds = [];
+    for (const [i, [handle, email, role]] of USERS.entries()) {
+      const { id } = await db.get(
+        'INSERT INTO users (email, handle, password_hash, role, created_at) VALUES (?, ?, ?, ?, ?) RETURNING id',
+        email, handle, pw, role, now - (60 - i) * 24 * H,
+      );
+      userIds.push(id);
+    }
     const posters = userIds.slice(1);
-    const insertOffer = db.prepare(
-      `INSERT INTO offers (deal_id, submitted_by, store, store_key, source_url, canonical_url, canonical_url_hash, price_cents, full_price_cents, note, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    );
+    const insertOffer = (...params) =>
+      db.run(
+        `INSERT INTO offers (deal_id, submitted_by, store, store_key, source_url, canonical_url, canonical_url_hash, price_cents, full_price_cents, note, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ...params,
+      );
+    const dealIds = [];
 
-    DEALS.forEach(([title, category, label, hoursAgo, details, offers], i) => {
+    for (const [i, [title, category, label, hoursAgo, details, offers]] of DEALS.entries()) {
       const created = now - hoursAgo * H;
       const creator = posters[i % posters.length];
       const hue = (i * 47) % 360;
-      const dealId = Number(
-        db
-          .prepare('INSERT INTO deals (submitted_by, title, image_url, category_id, details, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
-          .run(creator, title, `/img/placeholder.svg?t=${encodeURIComponent(label)}&h=${hue}`, cat[category], details, created, created).lastInsertRowid,
+      const { id: dealId } = await db.get(
+        'INSERT INTO deals (submitted_by, title, image_url, category_id, details, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id',
+        creator, title, `/img/placeholder.svg?t=${encodeURIComponent(label)}&h=${hue}`, cat[category], details, created, created,
       );
+      dealIds.push(dealId);
 
-      offers.forEach(([store, mrp, price, note], j) => {
+      for (const [j, [store, mrp, price, note]] of offers.entries()) {
         const [storeName, makeUrl] = STORES[store];
         const url = makeUrl(title);
         const canonical = canonicalizeUrl(url);
         // First listing is the creator's; extra stores were added later by other users.
         const poster = j === 0 ? creator : posters[(i + j * 3) % posters.length];
         const at = created + j * 1.5 * H;
-        insertOffer.run(dealId, poster, storeName, registrableDomain(new URL(canonical).hostname), url, canonical, hashUrl(canonical),
+        await insertOffer(dealId, poster, storeName, registrableDomain(new URL(canonical).hostname), url, canonical, hashUrl(canonical),
           Math.round(price * 100), Math.round(mrp * 100), note, at, at);
-      });
-      repo.refreshDealPricing(dealId);
+      }
+      await repo.refreshDealPricing(dealId);
 
       let up = 0;
       let down = 0;
@@ -218,38 +226,45 @@ export function seed(db) {
         const r = rand();
         const v = r < 0.62 ? 1 : r < 0.72 ? -1 : 0;
         if (!v) continue;
-        db.prepare('INSERT INTO votes (deal_id, user_id, value, created_at) VALUES (?, ?, ?, ?)').run(dealId, voter, v, created + H);
+        await db.run('INSERT INTO votes (deal_id, user_id, value, created_at) VALUES (?, ?, ?, ?)', dealId, voter, v, created + H);
         v === 1 ? up++ : down++;
       }
       // Simulate the wider community so scores aren't capped at the number of demo accounts.
       up += Math.floor(rand() * 40 * Math.max(0.2, 1 - hoursAgo / 200));
       down += Math.floor(rand() * 5);
-      db.prepare('UPDATE deals SET upvotes = ?, downvotes = ?, score = ? WHERE id = ?').run(up, down, up - down, dealId);
+      await db.run('UPDATE deals SET upvotes = ?, downvotes = ?, score = ? WHERE id = ?', up, down, up - down, dealId);
 
       const nComments = Math.floor(rand() * 4);
       for (let c = 0; c < nComments; c++) {
         const author = userIds[1 + Math.floor(rand() * (userIds.length - 1))];
-        db.prepare('INSERT INTO comments (deal_id, user_id, body, created_at) VALUES (?, ?, ?, ?)').run(
+        await db.run(
+          'INSERT INTO comments (deal_id, user_id, body, created_at) VALUES (?, ?, ?, ?)',
           dealId, author, COMMENTS[Math.floor(rand() * COMMENTS.length)], created + (c + 1) * 0.5 * H,
         );
       }
-    });
+    }
 
     // A few bookmarks and open reports so Admin Mode has something to show.
     const rahul = userIds[2];
-    for (const d of [1, 6, 14]) db.prepare('INSERT OR IGNORE INTO bookmarks (user_id, deal_id, created_at) VALUES (?, ?, ?)').run(rahul, d, now - H);
-    const dalOffer = db.prepare('SELECT o.id FROM offers o JOIN deals d ON d.id = o.deal_id WHERE d.title LIKE ?').get('Tata Sampann%').id;
-    db.prepare("INSERT INTO reports (reporter_id, target_type, target_id, reason, created_at) VALUES (?, 'offer', ?, 'expired: price is back to ₹398', ?)").run(userIds[4], dalOffer, now - 2 * H);
-    db.prepare("INSERT INTO reports (reporter_id, target_type, target_id, reason, created_at) VALUES (?, 'offer', ?, 'expired', ?)").run(userIds[5], dalOffer, now - H);
+    for (const i of [0, 5, 13]) {
+      await db.run('INSERT INTO bookmarks (user_id, deal_id, created_at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING', rahul, dealIds[i], now - H);
+    }
+    const dalOffer = (await db.get('SELECT o.id FROM offers o JOIN deals d ON d.id = o.deal_id WHERE d.title LIKE ?', 'Tata Sampann%')).id;
+    await db.run("INSERT INTO reports (reporter_id, target_type, target_id, reason, created_at) VALUES (?, 'offer', ?, 'expired: price is back to ₹398', ?)", userIds[4], dalOffer, now - 2 * H);
+    await db.run("INSERT INTO reports (reporter_id, target_type, target_id, reason, created_at) VALUES (?, 'offer', ?, 'expired', ?)", userIds[5], dalOffer, now - H);
   });
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-  const dbFile = process.env.DB_FILE || path.join(root, 'data', 'deals.db');
-  if (process.argv.includes('--reset')) for (const f of [dbFile, `${dbFile}-wal`, `${dbFile}-shm`]) rmSync(f, { force: true });
-  mkdirSync(path.dirname(dbFile), { recursive: true });
-  const db = openDb(dbFile);
-  seed(db);
-  console.log(`Seeded ${dbFile}. Demo accounts (password "${DEMO_PASSWORD}"): ${USERS.map((u) => `${u[0]} (${u[2]})`).join(', ')}`);
+  const target = process.env.DATABASE_URL || path.join(root, 'data', 'pglite');
+  if (process.env.NODE_ENV === 'production' && !process.argv.includes('--yes-wipe-production')) {
+    console.error('Refusing to wipe a production database. Pass --yes-wipe-production if you really mean it.');
+    process.exit(1);
+  }
+  const db = await openDb(target);
+  if (process.argv.includes('--reset')) await resetDb(db);
+  await seed(db);
+  await db.close();
+  console.log(`Seeded ${db.kind} database. Demo accounts (password "${DEMO_PASSWORD}"): ${USERS.map((u) => `${u[0]} (${u[2]})`).join(', ')}`);
 }

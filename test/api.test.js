@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { openDb, ensureCategories } from '../src/db.js';
+import { openDb, ensureCategories, resetDb } from '../src/db.js';
 import { createApp } from '../src/app.js';
 import { hashPassword } from '../src/auth.js';
 
@@ -13,16 +13,18 @@ let base;
 let db;
 
 before(async () => {
-  db = openDb(':memory:');
-  ensureCategories(db);
+  // In-memory Postgres (PGlite) by default; TEST_DATABASE_URL runs against a real server (wiped first).
+  db = await openDb(process.env.TEST_DATABASE_URL || null);
+  if (process.env.TEST_DATABASE_URL) await resetDb(db);
+  await ensureCategories(db);
   const pw = hashPassword('password123');
   const add = (handle, role) =>
-    db.prepare('INSERT INTO users (email, handle, password_hash, role, created_at) VALUES (?, ?, ?, ?, ?)').run(`${handle}@t.test`, handle, pw, role, Date.now());
-  add('admin', 'admin');
-  add('mod', 'moderator');
-  add('poster', 'user');
-  add('voter', 'user');
-  add('troll', 'user');
+    db.run('INSERT INTO users (email, handle, password_hash, role, created_at) VALUES (?, ?, ?, ?, ?)', `${handle}@t.test`, handle, pw, role, Date.now());
+  await add('admin', 'admin');
+  await add('mod', 'moderator');
+  await add('poster', 'user');
+  await add('voter', 'user');
+  await add('troll', 'user');
   const app = createApp({
     db,
     publicDir: path.join(root, 'public'),
@@ -35,7 +37,10 @@ before(async () => {
   base = `http://127.0.0.1:${server.address().port}`;
 });
 
-after(() => server.close());
+after(async () => {
+  server.close();
+  await db.close();
+});
 
 function client() {
   let cookie = '';

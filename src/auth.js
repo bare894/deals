@@ -17,28 +17,27 @@ export function verifyPassword(password, stored) {
   return timingSafeEqual(expected, actual);
 }
 
-export function createSession(db, userId) {
+export async function createSession(db, userId) {
   const token = randomBytes(32).toString('base64url');
   const now = Date.now();
-  db.prepare('INSERT INTO sessions (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)').run(token, userId, now, now + SESSION_TTL_MS);
+  await db.run('INSERT INTO sessions (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)', token, userId, now, now + SESSION_TTL_MS);
   return { token, maxAge: SESSION_TTL_MS / 1000 };
 }
 
-export function userForToken(db, token) {
+export async function userForToken(db, token) {
   if (!token) return null;
-  const row = db
-    .prepare(
-      `SELECT u.id, u.email, u.handle, u.role, u.status, u.created_at
-         FROM sessions s JOIN users u ON u.id = s.user_id
-        WHERE s.token = ? AND s.expires_at > ?`,
-    )
-    .get(token, Date.now());
+  const row = await db.get(
+    `SELECT u.id, u.email, u.handle, u.role, u.status, u.created_at
+       FROM sessions s JOIN users u ON u.id = s.user_id
+      WHERE s.token = ? AND s.expires_at > ?`,
+    token, Date.now(),
+  );
   if (!row || row.status === 'banned') return null;
   return { ...row };
 }
 
-export function destroySession(db, token) {
-  if (token) db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
+export async function destroySession(db, token) {
+  if (token) await db.run('DELETE FROM sessions WHERE token = ?', token);
 }
 
 export function parseCookies(header) {

@@ -3,7 +3,7 @@ import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { autoPopulate, resolveShortener } from './scrape.js';
 import { SESSION_COOKIE, parseCookies, userForToken } from './auth.js';
-import { HttpError, createRouter, escapeHtml, inr, makeRateLimiter, readJson } from './http.js';
+import { HttpError, clientIp, createRouter, escapeHtml, inr, makeRateLimiter, readJson } from './http.js';
 import { createRepo } from './repo.js';
 import { ROLE_RANK } from './routes/common.js';
 import { registerAuthRoutes } from './routes/auth.js';
@@ -98,7 +98,7 @@ export function createApp({
   async function renderIndex(req, dealId) {
     let html = await indexHtml();
     let tags = '';
-    const row = dealId && repo.getDealRow(dealId);
+    const row = dealId && (await repo.getDealRow(dealId));
     if (row && row.status === 'active') {
       const d = repo.serializeDeal(row);
       const price = d.price === 0 ? 'FREE' : d.price != null ? inr(d.price) : '';
@@ -178,7 +178,7 @@ export function createApp({
     if (mutating) checkCsrf(req);
 
     const token = parseCookies(req.headers.cookie)[SESSION_COOKIE];
-    const user = userForToken(db, token);
+    const user = await userForToken(db, token);
     if (r.opts.auth && !user) throw new HttpError(401, 'Please sign in to continue');
     if (r.opts.role && ROLE_RANK[user.role] < ROLE_RANK[r.opts.role]) throw new HttpError(403, 'You do not have permission to do that');
     if ((r.opts.active || r.opts.role) && user.status !== 'active') throw new HttpError(403, 'Your account is suspended');
@@ -186,7 +186,7 @@ export function createApp({
     const cookies = [];
     const body = mutating ? await readJson(req) : {};
     const result = await r.handler({
-      req, params, query: url.searchParams, body, user, token, ip: req.socket.remoteAddress, setCookie: (c) => cookies.push(c),
+      req, params, query: url.searchParams, body, user, token, ip: clientIp(req), setCookie: (c) => cookies.push(c),
     });
     send(res, 200, result, cookies.length ? { 'set-cookie': cookies } : {});
   }
@@ -208,9 +208,9 @@ export function createApp({
       if (pathname !== '/' && (await serveStatic(res, pathname))) return;
 
       // SPA fallback (history routing); deal pages get OG tags, merged deals redirect.
-      const dealMatch = pathname.match(/^\/deals\/(\d+)$/);
+      const dealMatch = pathname.match(/^\/deals\/(\d{1,9})$/);
       if (dealMatch) {
-        const merged = db.prepare('SELECT merged_into FROM deals WHERE id = ?').get(Number(dealMatch[1]))?.merged_into;
+        const merged = (await db.get('SELECT merged_into FROM deals WHERE id = ?', Number(dealMatch[1])))?.merged_into;
         if (merged) return send(res, 301, '', { location: `/deals/${merged}` });
       }
       if (path.extname(pathname) && !dealMatch) return send(res, 404, 'Not found', { 'content-type': 'text/plain' });
@@ -218,6 +218,8 @@ export function createApp({
       return send(res, 200, html, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-cache' });
     } catch (err) {
       if (err instanceof HttpError) return send(res, err.status, { error: err.message, ...err.extra });
+      // Malformed or out-of-range ids in the URL (Postgres: invalid_text_representation, numeric_value_out_of_range).
+      if (err?.code === '22P02' || err?.code === '22003') return send(res, 404, { error: 'Not found' });
       console.error(err);
       return send(res, 500, { error: 'Something went wrong' });
     }

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { openDb, ensureCategories } from '../src/db.js';
+import { openDb, ensureCategories, resetDb } from '../src/db.js';
 import { createApp } from '../src/app.js';
 import { hashPassword } from '../src/auth.js';
 
@@ -24,9 +24,11 @@ async function fakeFetch(url) {
 }
 
 before(async () => {
-  db = openDb(':memory:');
-  ensureCategories(db);
-  db.prepare('INSERT INTO users (email, handle, password_hash, created_at) VALUES (?, ?, ?, ?)').run('existing@t.test', 'existing', hashPassword('password123'), Date.now());
+  // In-memory Postgres (PGlite) by default; TEST_DATABASE_URL runs against a real server (wiped first).
+  db = await openDb(process.env.TEST_DATABASE_URL || null);
+  if (process.env.TEST_DATABASE_URL) await resetDb(db);
+  await ensureCategories(db);
+  await db.run('INSERT INTO users (email, handle, password_hash, created_at) VALUES (?, ?, ?, ?)', 'existing@t.test', 'existing', hashPassword('password123'), Date.now());
   const app = createApp({
     db,
     publicDir: path.join(root, 'public'),
@@ -39,7 +41,10 @@ before(async () => {
   base = `http://127.0.0.1:${server.address().port}`;
 });
 
-after(() => server.close());
+after(async () => {
+  server.close();
+  await db.close();
+});
 
 /** Runs start → (provider) → callback like a browser would; returns the final redirect + session cookie. */
 async function signIn(provider, { next = '/saved', tamperState = false } = {}) {
@@ -98,7 +103,7 @@ test('forged state and open redirects are rejected; banned users cannot sign in'
 
   assert.equal((await signIn('google', { next: '//evil.example' })).location, '/');
 
-  db.prepare("UPDATE users SET status = 'banned' WHERE handle = 'priya_sharma'").run();
+  await db.run("UPDATE users SET status = 'banned' WHERE handle = 'priya_sharma'");
   assert.equal((await signIn('google')).location, '/login?error=banned');
 });
 

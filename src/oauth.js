@@ -8,7 +8,7 @@
 // Failures redirect to /login?error=<code> (codes, never free text, so links can't inject messages).
 import { createHmac, randomBytes, randomInt } from 'node:crypto';
 import { createSession, parseCookies, sessionCookie } from './auth.js';
-import { HttpError } from './http.js';
+import { HttpError, clientIp } from './http.js';
 
 const STATE_COOKIE = 'oauth_state';
 const FB_GRAPH = 'https://graph.facebook.com/v21.0';
@@ -53,7 +53,7 @@ export function oauthConfigFromEnv(env = process.env) {
 const safeNext = (n) => (typeof n === 'string' && n.startsWith('/') && !n.startsWith('//') && !n.startsWith('/\\') ? n : '/');
 
 /** Derive an unused handle ("Priya Sharma" → priya_sharma, then priya_sharma42 …). */
-function uniqueHandle(db, name, email) {
+async function uniqueHandle(db, name, email) {
   let base = String(name || String(email).split('@')[0] || '')
     .normalize('NFKD')
     .replace(/[^\w]+/g, '_')
@@ -61,11 +61,11 @@ function uniqueHandle(db, name, email) {
     .toLowerCase()
     .slice(0, 18);
   if (base.length < 3) base = `user_${base}`.slice(0, 18);
-  const taken = db.prepare('SELECT 1 FROM users WHERE handle = ?');
-  if (!taken.get(base)) return base;
+  const taken = (h) => db.get('SELECT 1 FROM users WHERE lower(handle) = lower(?)', h);
+  if (!(await taken(base))) return base;
   for (let i = 0; i < 50; i++) {
     const h = `${base}${randomInt(10, 99999)}`;
-    if (!taken.get(h)) return h;
+    if (!(await taken(h))) return h;
   }
   return `${base}_${randomBytes(3).toString('hex')}`;
 }
@@ -84,27 +84,27 @@ export function createOAuth({ db, config, secureCookies, baseUrl, rateLimit, fet
     `${STATE_COOKIE}=${value}; Path=/auth; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secureCookies ? '; Secure' : ''}`;
 
   /** Find the linked account, else link by verified email, else create one. Returns a users row. */
-  function resolveUser(provider, { subject, email, emailVerified, name }) {
-    const linked = db
-      .prepare('SELECT u.* FROM oauth_identities i JOIN users u ON u.id = i.user_id WHERE i.provider = ? AND i.subject = ?')
-      .get(provider, String(subject));
+  async function resolveUser(provider, { subject, email, emailVerified, name }) {
+    const linked = await db.get('SELECT u.* FROM oauth_identities i JOIN users u ON u.id = i.user_id WHERE i.provider = ? AND i.subject = ?', provider, String(subject));
     if (linked) return linked;
     if (!email) throw new HttpError(400, 'no_email');
     if (!emailVerified) throw new HttpError(400, 'unverified');
     const link = (userId) =>
-      db.prepare('INSERT INTO oauth_identities (provider, subject, user_id, created_at) VALUES (?, ?, ?, ?)').run(provider, String(subject), userId, Date.now());
-    const existing = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+      db.run('INSERT INTO oauth_identities (provider, subject, user_id, created_at) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING', provider, String(subject), userId, Date.now());
+    const existing = await db.get('SELECT * FROM users WHERE lower(email) = lower(?)', email);
     if (existing) {
-      link(existing.id);
+      await link(existing.id);
       return existing;
     }
     // Social-only accounts have no password; '' never verifies (see verifyPassword).
-    const id = Number(
-      db.prepare("INSERT INTO users (email, handle, password_hash, created_at) VALUES (?, ?, '', ?)").run(email.toLowerCase(), uniqueHandle(db, name, email), Date.now())
-        .lastInsertRowid,
-    );
-    link(id);
-    return db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+    return db.tx(async () => {
+      const user = await db.get(
+        "INSERT INTO users (email, handle, password_hash, created_at) VALUES (?, ?, '', ?) RETURNING *",
+        email.toLowerCase(), await uniqueHandle(db, name, email), Date.now(),
+      );
+      await link(user.id);
+      return user;
+    });
   }
 
   /** Handles /auth/* requests. Returns false when the path isn't an OAuth route. */
@@ -132,12 +132,12 @@ export function createOAuth({ db, config, secureCookies, baseUrl, rateLimit, fet
     if (!state || cProvider !== provider || cState !== state) return fail('expired', [clear]);
     if (url.searchParams.get('error') || !url.searchParams.get('code')) return fail('cancelled', [clear]);
     try {
-      rateLimit('oauth', req.socket.remoteAddress);
+      rateLimit('oauth', clientIp(req));
       const profile = await PROVIDERS[provider].profile({ code: url.searchParams.get('code'), clientId, clientSecret, redirectUri }, fetchJson);
       if (!profile.subject) throw new Error('OAuth profile has no subject');
-      const user = resolveUser(provider, profile);
+      const user = await resolveUser(provider, profile);
       if (user.status === 'banned') return fail('banned', [clear]);
-      const { token, maxAge } = createSession(db, user.id);
+      const { token, maxAge } = await createSession(db, user.id);
       const next = safeNext(Buffer.from(cNext || '', 'base64url').toString());
       return send(res, 302, '', { location: next, 'set-cookie': [clear, sessionCookie(token, maxAge, secureCookies)] });
     } catch (err) {

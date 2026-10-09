@@ -9,18 +9,19 @@ A Slickdeals-style community deals platform **for India**, built from [prd.md](p
 - **Categories:** Mobiles, Electronics, Fashion, Beauty & Personal Care, Home & Kitchen, Grocery, Travel, Gaming, Toys & Kids, Apps & Services, Other.
 - **Share previews:** OG tags use `INR` and `en_IN`.
 
-**Zero dependencies.** Node ≥ 22.13 only (uses the built-in `node:sqlite`). No `npm install`, no build step.
+**Stack:** Node ≥ 22.13 and PostgreSQL, with no build step. The only runtime dependency is `pg`. Locally, with no `DATABASE_URL` set, the app runs on an embedded Postgres (PGlite, a dev dependency) stored in `data/pglite/`, so you don't need a database server to develop or test.
 
 ```bash
+npm install        # pg + PGlite (local Postgres)
 npm start          # http://localhost:3000 (auto-seeds demo data on first run)
 npm run dev        # same, restarts on file changes
-npm test           # 28 unit + API integration tests
-npm run seed       # wipe data/deals.db and reseed
+npm test           # unit + API tests on in-memory Postgres (TEST_DATABASE_URL=… to use a real server)
+npm run seed       # wipe the database and reseed demo data (refuses when NODE_ENV=production)
 ```
 
 Demo accounts (password `password123`): `admin` (Admin), `mod_priya` (Moderator), `rahul`, `deal_guru_amit`, `sneha_saves`, … (Users). Seed deals link to real search pages on Flipkart, Amazon.in, Myntra, AJIO, Nykaa and Meesho.
 
-Env vars: `PORT` (3000), `DB_FILE` (`data/deals.db`), `PUBLIC_URL` (absolute base for share/OG links), `NODE_ENV=production` (Secure cookies, static caching).
+Env vars: `PORT` (3000), `DATABASE_URL` (Postgres; unset = local PGlite), `PG_POOL_MAX` (10), `SEED=0` (never auto-seed demo data), `PUBLIC_URL` (absolute base for share/OG links), `NODE_ENV=production` (Secure cookies, static caching).
 
 **Social sign-in (optional):** set `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` and/or `FACEBOOK_APP_ID` + `FACEBOOK_APP_SECRET`. Each button appears on the sign-in and register pages only when its pair is set. Register these redirect URIs with the provider: `<PUBLIC_URL>/auth/google/callback` and `<PUBLIC_URL>/auth/facebook/callback`. The first social sign-in creates an account, or links to an existing account with the same verified email. Code: `src/oauth.js`.
 
@@ -74,7 +75,7 @@ The web client is responsive and mobile-first, with a bottom tab bar and native 
 ```
 server.js            HTTP entry point
 src/app.js           Router + all API endpoints + SPA/OG rendering
-src/db.js            SQLite schema (users, deals, votes, comments, bookmarks, views, reports, moderation_actions)
+src/db.js            Postgres access (pg / PGlite), schema migrations, transactions
 src/canonicalize.js  URL canonicalization for dedup
 src/scrape.js        SSRF-safe fetcher + metadata extraction
 src/ranking.js       Hot + For You ranking
@@ -88,6 +89,13 @@ test/                node:test suites
 ## Production gaps to address before launch
 
 - Rate limiting is in-memory per process; use Redis or similar when running multiple instances.
-- SQLite fits a single node. Move to Postgres for multi-instance deployment (the schema ports directly).
+- Schema changes go in `MIGRATIONS` in `src/db.js`. They are append-only and applied on boot, under an advisory lock so concurrent instances don't race. Never edit a migration that has shipped.
 - Retailer scraping is best-effort. Amazon.in, Flipkart and Myntra often block bots or render prices with JavaScript, and users then see the manual-entry fallback. Per-retailer parsers or affiliate product APIs would improve the auto-fill rate (PRD §19). Examples are Amazon PA-API and the Flipkart Affiliate API.
 - Users can't yet reset passwords, verify email, or report other user accounts.
+
+## Deploying on Railway
+
+1. Create a project with a **PostgreSQL** service and a service for this repo. In the app service's variables, reference the database: `DATABASE_URL=${{Postgres.DATABASE_URL}}`.
+2. Set `NODE_ENV=production`, `SEED=0`, `PUBLIC_URL=https://sharedeals.in`, and the optional social sign-in keys.
+3. The build runs `npm install` and the start command is `npm start` (Railway detects both). Tables are created on first boot.
+4. Add the custom domain `sharedeals.in` in the service's Networking settings, then create the DNS record Railway shows you.

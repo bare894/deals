@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { canonicalizeUrl, parseDealUrl } from '../src/canonicalize.js';
 import { extractDealFields, isPrivateIp, parsePrice, storeFromHost, autoPopulate } from '../src/scrape.js';
 import { hotScore, rankHot, rankForYou, categoryAffinity } from '../src/ranking.js';
+import { clientIp } from '../src/http.js';
 
 test('canonicalization strips tracking noise but keeps product identity', () => {
   const base = 'https://bestbuy.com/site/sony-wh1000xm5/6505727.p?skuId=6505727';
@@ -130,4 +131,14 @@ test('for-you favors categories with positive affinity', () => {
   const a = { id: 'a', category_id: 1, score: 5, created_at: now - 3_600_000 };
   const b = { id: 'b', category_id: 2, score: 5, created_at: now - 3_600_000 };
   assert.deepEqual(rankForYou([b, a], aff, now).map((d) => d.id), ['a', 'b']);
+});
+
+test('client IP: socket address by default; behind trusted proxies, the hop they appended', () => {
+  const req = (xff) => ({ socket: { remoteAddress: '10.0.0.5' }, headers: xff ? { 'x-forwarded-for': xff } : {} });
+  assert.equal(clientIp(req('203.0.113.9'), 0), '10.0.0.5');
+  assert.equal(clientIp(req('203.0.113.9'), 1), '203.0.113.9');
+  // A client can prepend fake entries; only the proxy-appended (rightmost) one counts.
+  assert.equal(clientIp(req('1.1.1.1, 203.0.113.9'), 1), '203.0.113.9');
+  assert.equal(clientIp(req('1.1.1.1, 203.0.113.9, 172.16.0.2'), 2), '203.0.113.9');
+  assert.equal(clientIp(req(''), 1), '10.0.0.5');
 });

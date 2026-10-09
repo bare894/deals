@@ -23,9 +23,9 @@ export async function resolveLink(rawUrl, resolveUrl) {
 }
 
 /** Product-level fields (shared by every store listing). */
-export function validateDealBody(db, body) {
+export async function validateDealBody(db, body) {
   const categoryId = Number(body.categoryId);
-  const category = Number.isInteger(categoryId) ? db.prepare('SELECT id FROM categories WHERE id = ? AND active = 1').get(categoryId) : null;
+  const category = Number.isInteger(categoryId) ? await db.get('SELECT id FROM categories WHERE id = ? AND active = 1', categoryId) : null;
   if (!category) throw new HttpError(400, 'Please choose a category');
   let imageUrl = str(body.imageUrl, 'Image URL', { max: 2000 });
   if (imageUrl && !imageUrl.startsWith('/img/placeholder.svg?')) {

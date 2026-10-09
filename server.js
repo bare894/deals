@@ -1,5 +1,4 @@
 import http from 'node:http';
-import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openDb, ensureCategories } from './src/db.js';
@@ -8,13 +7,13 @@ import { seed } from './src/seed.js';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT || 3000);
-const dbFile = process.env.DB_FILE || path.join(root, 'data', 'deals.db');
+// Production: DATABASE_URL (Railway Postgres). Local dev: embedded Postgres (PGlite) under data/.
+const dbTarget = process.env.DATABASE_URL || path.join(root, 'data', 'pglite');
 
-mkdirSync(path.dirname(dbFile), { recursive: true });
-const db = openDb(dbFile);
-ensureCategories(db);
-if (db.prepare('SELECT COUNT(*) AS n FROM users').get().n === 0 && process.env.SEED !== '0') {
-  seed(db);
+const db = await openDb(dbTarget);
+await ensureCategories(db);
+if ((await db.get('SELECT COUNT(*) AS n FROM users')).n === 0 && process.env.SEED !== '0') {
+  await seed(db);
   console.log('Seeded demo data (admin/moderator/user accounts + sample deals).');
 }
 
@@ -24,6 +23,17 @@ const app = createApp({
   secureCookies: process.env.NODE_ENV === 'production',
 });
 
-http.createServer(app).listen(port, () => {
-  console.log(`ShareDeals running at http://localhost:${port}`);
+const server = http.createServer(app).listen(port, () => {
+  console.log(`ShareDeals running at http://localhost:${port} (database: ${db.kind})`);
 });
+
+// Railway sends SIGTERM on redeploy: finish in-flight requests, then close the pool.
+for (const sig of ['SIGTERM', 'SIGINT']) {
+  process.once(sig, () => {
+    server.close(async () => {
+      await db.close();
+      process.exit(0);
+    });
+    setTimeout(() => process.exit(0), 10_000).unref();
+  });
+}

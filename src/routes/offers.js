@@ -11,15 +11,15 @@ export function registerOfferRoutes({ route, db, repo, rateLimit, resolveUrl }) 
     const dealId = Number(params.id);
     const link = await resolveLink(body.url, resolveUrl);
     const offer = validateOfferBody(body);
-    const dup = repo.findActiveOfferByHash(link.hash);
+    const dup = await repo.findActiveOfferByHash(link.hash);
     if (dup) throw duplicateLinkError(dup);
     const gtin = /^\d{8,14}$/.test(String(body.gtin || '')) ? String(body.gtin).padStart(14, '0') : null;
-    const offerId = repo.addOffer(dealId, user.id, link, offer, { gtin, mpn: body.mpn ? String(body.mpn).slice(0, 64) : null });
-    return { offer: repo.serializeOffer(repo.getOfferRow(offerId)), deal: repo.getDeal(dealId) };
+    const offerId = await repo.addOffer(dealId, user.id, link, offer, { gtin, mpn: body.mpn ? String(body.mpn).slice(0, 64) : null });
+    return { offer: repo.serializeOffer(await repo.getOfferRow(offerId)), deal: await repo.getDeal(dealId) };
   });
 
-  function ownOffer(id, user) {
-    const o = repo.getOfferRow(id);
+  async function ownOffer(id, user) {
+    const o = await repo.getOfferRow(id);
     if (!o || o.status !== 'active') throw new HttpError(404, 'Store listing not found');
     if (o.submitted_by !== user.id) throw new HttpError(403, 'You can only change store links you posted');
     return o;
@@ -27,21 +27,23 @@ export function registerOfferRoutes({ route, db, repo, rateLimit, resolveUrl }) 
 
   // The link itself isn't editable — remove the listing and add a new one instead — so a
   // listing can't be swapped to a different product after it has collected trust.
-  route('PATCH', '/api/offers/:id', { auth: true, active: true }, ({ params, body, user }) => {
-    const o = ownOffer(Number(params.id), user);
+  route('PATCH', '/api/offers/:id', { auth: true, active: true }, async ({ params, body, user }) => {
+    const o = await ownOffer(Number(params.id), user);
     const f = validateOfferBody(body);
-    tx(db, () => {
-      db.prepare('UPDATE offers SET price_cents = ?, full_price_cents = ?, store = ?, note = ?, updated_at = ? WHERE id = ?').run(
+    await tx(db, async () => {
+      await db.get('SELECT 1 FROM deals WHERE id = ? FOR UPDATE', o.deal_id);
+      await db.run(
+        'UPDATE offers SET price_cents = ?, full_price_cents = ?, store = ?, note = ?, updated_at = ? WHERE id = ?',
         f.price, f.fullPrice, f.store, f.note, Date.now(), o.id,
       );
-      repo.refreshDealPricing(o.deal_id);
+      await repo.refreshDealPricing(o.deal_id);
     });
-    return { offer: repo.serializeOffer(repo.getOfferRow(o.id)) };
+    return { offer: repo.serializeOffer(await repo.getOfferRow(o.id)) };
   });
 
-  route('DELETE', '/api/offers/:id', { auth: true, active: true }, ({ params, user }) => {
-    const o = ownOffer(Number(params.id), user);
-    repo.setOfferStatus(o.id, 'removed', user.id);
+  route('DELETE', '/api/offers/:id', { auth: true, active: true }, async ({ params, user }) => {
+    const o = await ownOffer(Number(params.id), user);
+    await repo.setOfferStatus(o.id, 'removed', user.id);
     return { ok: true };
   });
 }

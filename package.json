@@ -1,7 +1,7 @@
 {
   "name": "sharedeals",
   "version": "1.0.0",
-  "description": "Community deal-sharing platform (Slickdeals-style) — see prd.md",
+  "description": "Community deal-sharing platform for India (sharedeals.in) — see prd.md",
   "type": "module",
   "private": true,
   "engines": {
@@ -11,6 +11,13 @@
     "start": "node --disable-warning=ExperimentalWarning server.js",
     "dev": "node --disable-warning=ExperimentalWarning --watch server.js",
     "seed": "node --disable-warning=ExperimentalWarning src/seed.js --reset",
-    "test": "node --disable-warning=ExperimentalWarning --test \"test/*.test.js\""
+    "test": "node --disable-warning=ExperimentalWarning --test \"test/*.test.js\"",
+    "make-admin": "node --disable-warning=ExperimentalWarning src/make-admin.js"
+  },
+  "dependencies": {
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8"
   }
 }
