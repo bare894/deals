@@ -529,6 +529,8 @@ async function detailPage({ params, alive }) {
   const [{ deal: d }, { comments }] = await Promise.all([api(`/api/deals/${id}`), api(`/api/deals/${id}/comments`)]);
   if (!alive()) return;
   const removed = d.status !== 'active';
+  // Offers arrive active-first, cheapest first: the button goes to the best live store link.
+  const best = (d.offers || []).find((o) => o.status === 'active');
   setPage(
     d.title,
     html`
@@ -547,7 +549,7 @@ async function detailPage({ params, alive }) {
           </div>
           <div class="actions">
             ${voteWidget(d, { large: true })}
-            <a class="btn btn-primary btn-lg" href="${d.sourceUrl}" target="_blank" rel="noopener noreferrer nofollow ugc">Get deal on ${d.store} ↗</a>
+            ${best ? html`<a class="btn btn-primary btn-lg" href="${best.url}" target="_blank" rel="noopener noreferrer nofollow sponsored ugc">Get deal on ${best.store} ↗</a>` : ''}
           </div>
           <div class="actions" style="margin-top:0">
             ${removed ? '' : html`<button class="btn ${d.bookmarked ? 'on' : ''}" data-action="bookmark" data-id="${d.id}" aria-pressed="${d.bookmarked}">♡ <span class="lbl">${d.bookmarked ? 'Saved' : 'Save'}</span></button>`}
@@ -754,10 +756,11 @@ async function editPage({ params, alive }) {
   const { deal: d } = await api(`/api/deals/${params[0]}`);
   if (!alive()) return;
   if (!d.canEdit) throw Object.assign(new Error('You can only edit your own active deals.'), { status: 403 });
-  const v = { id: d.id, url: d.sourceUrl, title: d.title, imageUrl: d.imageUrl, price: d.price, fullPrice: d.fullPrice, store: d.store, categoryId: d.category?.id, details: d.details };
+  const link = (d.offers || []).find((o) => o.status === 'active')?.url || '';
+  const v = { id: d.id, url: link, title: d.title, imageUrl: d.imageUrl, price: d.price, fullPrice: d.fullPrice, store: d.store, categoryId: d.category?.id, details: d.details };
   setPage('Edit deal', html`<div class="page-head"><h1>Edit deal</h1></div><div class="panel">${dealForm(v, { mode: 'edit' })}</div>`);
   bindDealForm($('#deal-form'), {
-    url: d.sourceUrl,
+    url: link,
     onSubmit: async (body) => {
       await api(`/api/deals/${d.id}`, { method: 'PATCH', body });
       toast('Deal updated');
