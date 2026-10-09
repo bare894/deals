@@ -25,5 +25,5 @@ const app = createApp({
 });
 
 http.createServer(app).listen(port, () => {
-  console.log(`DealShare running at http://localhost:${port}`);
+  console.log(`ShareDeals running at http://localhost:${port}`);
 });

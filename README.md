@@ -1,6 +1,13 @@
-# DealShare
+# ShareDeals
 
-A Slickdeals-style community deals platform built from [prd.md](prd.md). Users post deals by pasting a URL, and the community votes, comments, and saves them. Moderators and Admins keep the catalog clean from a desktop-web **Admin Mode**.
+A Slickdeals-style community deals platform **for India**, built from [prd.md](prd.md). Users post deals from Flipkart, Amazon.in, Myntra, AJIO, Nykaa, Meesho and other retailers by pasting a URL, and the community votes, comments, and saves them. Moderators and Admins keep the catalog clean from a desktop-web **Admin Mode**.
+
+**India localization:**
+- **Prices:** in ₹ with Indian digit grouping (₹1,29,999). The full price is labelled **MRP**. Price fields accept `₹`, `Rs.` and lakh-grouped input. Values are stored as integer paise.
+- **Duplicate detection:** product links are reduced to their product ID for Flipkart (`itm…` + `pid` variant), Myntra (style ID), Nykaa (product + `skuId` shade), AJIO, Meesho, and Amazon.in (ASIN). This blocks the same product even when it's shared from the app, search results, or an affiliate link. Short links (`fkrt.it`, `amzn.in`, `myntr.it`, `amzn.to`) are followed to the product page first.
+- **Store names:** auto-detected for about 25 Indian retailers, including Flipkart, Myntra, AJIO, Nykaa, Meesho, Tata CLiQ, Croma, JioMart, BigBasket and Reliance Digital.
+- **Categories:** Mobiles, Electronics, Fashion, Beauty & Personal Care, Home & Kitchen, Grocery, Travel, Gaming, Toys & Kids, Apps & Services, Other.
+- **Share previews:** OG tags use `INR` and `en_IN`.
 
 **Zero dependencies.** Node ≥ 22.13 only (uses the built-in `node:sqlite`). No `npm install`, no build step.
 
@@ -11,7 +18,7 @@ npm test           # 28 unit + API integration tests
 npm run seed       # wipe data/deals.db and reseed
 ```
 
-Demo accounts (password `password123`): `admin` (Admin), `mod_maya` (Moderator), `alice`, `bargainbob`, … (Users).
+Demo accounts (password `password123`): `admin` (Admin), `mod_priya` (Moderator), `rahul`, `deal_guru_amit`, `sneha_saves`, … (Users). Seed deals link to real search pages on Flipkart, Amazon.in, Myntra, AJIO, Nykaa and Meesho.
 
 Env vars: `PORT` (3000), `DB_FILE` (`data/deals.db`), `PUBLIC_URL` (absolute base for share/OG links), `NODE_ENV=production` (Secure cookies, static caching).
 
@@ -45,10 +52,10 @@ The PRD left these open, so I chose defaults. Each is easy to change:
 | 5 | Votes/comments on removed deals | Preserved (soft delete), so restoring a deal brings them back | — |
 | 6 | Self-votes | **Blocked** (403); the vote buttons are disabled on your own deals | vote route |
 | 7 | Can Moderators suspend/ban? | **No, Admin only.** Moderators handle content; Admins handle users and categories | `ADMIN` guards in `src/app.js` |
-| 8 | Category list | Seeded with the PRD starter set. Admins can add, rename, or hide categories | Admin Mode → Categories |
+| 8 | Category list | Seeded with an India-oriented version of the PRD starter set (adds Mobiles). Admins can add, rename, or hide categories | Admin Mode → Categories |
 | 9 | Comment reporting | Yes, a "Report" button on each comment feeds the moderation queue | — |
 
-Other choices: suspended users can browse but not post, vote, or comment. Banned users are signed out everywhere and can't sign in. Admins can't modify other Admins and can't create new Admins from the UI. Deal price is required (`0` = FREE) and full price is optional.
+Other choices: suspended users can browse but not post, vote, or comment. Banned users are signed out everywhere and can't sign in. Admins can't modify other Admins and can't create new Admins from the UI. Deal price is required (`0` = FREE) and MRP is optional.
 
 ## Browser extension (PRD §9.3)
 
@@ -80,5 +87,5 @@ test/                node:test suites
 
 - Rate limiting is in-memory per process; use Redis or similar when running multiple instances.
 - SQLite fits a single node. Move to Postgres for multi-instance deployment (the schema ports directly).
-- Retailer scraping is best-effort. Amazon and other large retailers often block bots, and users then see the manual-entry fallback. Per-retailer parsers or a product API would improve the auto-fill rate (PRD §19).
+- Retailer scraping is best-effort. Amazon.in, Flipkart and Myntra often block bots or render prices with JavaScript, and users then see the manual-entry fallback. Per-retailer parsers or affiliate product APIs would improve the auto-fill rate (PRD §19). Examples are Amazon PA-API and the Flipkart Affiliate API.
 - Users can't yet reset passwords, verify email, or report other user accounts.

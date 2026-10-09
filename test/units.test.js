@@ -26,6 +26,26 @@ test('amazon URLs collapse to /dp/ASIN', () => {
   assert.equal(canonicalizeUrl('https://smile.amazon.com/gp/product/b0bx2l8pbt?tag=aff-20'), want);
 });
 
+test('Indian marketplace URLs collapse to their product id', () => {
+  // Flipkart: slug, search context and tracking params vary; itm id + pid (variant) identify the product.
+  const fk = 'https://flipkart.com/p/itm6ac6485515ae4?pid=MOBGTAGPTB3VS24W';
+  assert.equal(
+    canonicalizeUrl('https://www.flipkart.com/apple-iphone-15-black-128-gb/p/itm6ac6485515ae4?pid=MOBGTAGPTB3VS24W&lid=LSTMOB123&marketplace=FLIPKART&q=iphone&srno=s_1_1&otracker=search&fm=organic&iid=abc'),
+    fk,
+  );
+  assert.equal(canonicalizeUrl('https://dl.flipkart.com/s/apple-iphone-15/p/itm6ac6485515ae4?pid=MOBGTAGPTB3VS24W&affid=xyz'), fk);
+  assert.notEqual(canonicalizeUrl('https://www.flipkart.com/x/p/itm6ac6485515ae4?pid=OTHERVARIANT'), fk, 'different variant');
+  // Myntra: numeric style id.
+  assert.equal(canonicalizeUrl('https://www.myntra.com/sports-shoes/puma/puma-men-softride/24563110/buy?utm_source=share'), 'https://myntra.com/24563110');
+  assert.equal(canonicalizeUrl('https://www.myntra.com/24563110'), 'https://myntra.com/24563110');
+  // Nykaa keeps the shade (skuId); AJIO / Meesho use the /p/ code.
+  assert.equal(canonicalizeUrl('https://www.nykaa.com/maybelline-fit-me/p/41546?productId=41546&skuId=41544&pps=1'), 'https://nykaa.com/p/41546?skuId=41544');
+  assert.equal(canonicalizeUrl('https://www.ajio.com/us-polo-assn-polo/p/469581377_navy?utm_medium=x'), 'https://ajio.com/p/469581377_navy');
+  assert.equal(canonicalizeUrl('https://www.meesho.com/cotton-bedsheet/p/3k2j9x'), 'https://meesho.com/p/3k2j9x');
+  // amazon.in is handled by the ASIN rule.
+  assert.equal(canonicalizeUrl('https://www.amazon.in/boAt-Airdopes-141/dp/B09N3XMZ5F/ref=sr_1_1?tag=deal-21'), 'https://amazon.in/dp/B09N3XMZ5F');
+});
+
 test('parseDealUrl rejects non-http schemes and junk', () => {
   assert.throws(() => parseDealUrl('javascript:alert(1)'));
   assert.throws(() => parseDealUrl('ftp://example.com/x'));
@@ -52,20 +72,20 @@ test('extracts fields from JSON-LD Product + OG tags', () => {
 
 test('falls back to OG/meta and <title>, resolves relative images', () => {
   const html = `<meta content="Cool Lamp" property="og:title"><meta property="og:image" content="/a.png"><meta property="product:price:amount" content="19.5">`;
-  const f = extractDealFields(html, 'https://www.target.com/p/lamp');
+  const f = extractDealFields(html, 'https://www.meesho.com/p/lamp');
   assert.equal(f.title, 'Cool Lamp');
-  assert.equal(f.imageUrl, 'https://www.target.com/a.png');
+  assert.equal(f.imageUrl, 'https://www.meesho.com/a.png');
   assert.equal(f.price, 19.5);
-  assert.equal(f.store, 'Target');
+  assert.equal(f.store, 'Meesho');
   assert.equal(extractDealFields('<title> Plain   Page </title>', 'https://x.com').title, 'Plain Page');
 });
 
 test('autoPopulate degrades gracefully when the fetch fails (PRD §9.1)', async () => {
-  const r = await autoPopulate('https://www.walmart.com/ip/123', async () => {
+  const r = await autoPopulate('https://www.myntra.com/24563110', async () => {
     throw Object.assign(new Error('nope'), { code: 'ECONNRESET' });
   });
   assert.equal(r.ok, false);
-  assert.equal(r.fields.store, 'Walmart');
+  assert.equal(r.fields.store, 'Myntra');
   assert.equal(r.fields.title, '');
   const blocked = await autoPopulate('https://x.com', async () => ({ status: 403, headers: {}, body: '' }));
   assert.equal(blocked.ok, false);
@@ -79,10 +99,16 @@ test('SSRF guard classifies internal addresses', () => {
 });
 
 test('price parsing and store naming', () => {
-  assert.equal(parsePrice('$1,234.56'), 1234.56);
-  assert.equal(parsePrice('USD 49'), 49);
+  assert.equal(parsePrice('₹1,29,999'), 129999, 'Indian lakh grouping');
+  assert.equal(parsePrice('Rs. 2,449.50'), 2449.5);
+  assert.equal(parsePrice('1,234.56'), 1234.56);
   assert.equal(parsePrice(''), null);
-  assert.equal(storeFromHost('www.homedepot.com'), 'The Home Depot');
+  assert.equal(storeFromHost('www.flipkart.com'), 'Flipkart');
+  assert.equal(storeFromHost('dl.flipkart.com'), 'Flipkart');
+  assert.equal(storeFromHost('www.amazon.in'), 'Amazon');
+  assert.equal(storeFromHost('www.ajio.com'), 'AJIO');
+  assert.equal(storeFromHost('www.nykaa.com'), 'Nykaa');
+  assert.equal(storeFromHost('shop.acme.co.in'), 'Acme', '.co.in domains');
   assert.equal(storeFromHost('shop.acme.co'), 'Acme');
 });
 

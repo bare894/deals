@@ -100,6 +100,10 @@ test('end-to-end: auth, submit, dedup, vote, comment, bookmark, moderation', asy
     dealId = r.data.deal.id;
     assert.equal(r.data.deal.discountPct, 50);
     assert.equal(r.data.deal.price, 19.99);
+    // Rupee input formats, including lakh grouping.
+    const inr = await poster.post('/api/deals', dealBody('https://shop.com/inr', { price: '₹1,29,999', fullPrice: 'Rs. 1,49,900' }));
+    assert.equal(inr.status, 200, JSON.stringify(inr.data));
+    assert.deepEqual([inr.data.deal.price, inr.data.deal.fullPrice], [129999, 149900]);
   });
 
   await t.test('validation errors', async () => {
@@ -257,7 +261,8 @@ test('deal pages render escaped Open Graph tags; SPA fallback works', async () =
   const r = await c.post('/api/deals', dealBody('https://og.com/x', { title: 'Big "Sale" <b>now</b>' }));
   const page = await fetch(`${base}/deals/${r.data.deal.id}`).then((res) => res.text());
   assert.match(page, /<meta property="og:title" content="Big &quot;Sale&quot; &lt;b&gt;now&lt;\/b&gt;">/);
-  assert.match(page, /og:description" content="\$19\.99 \(was \$39\.99, 50% off\) at Shop/);
+  assert.match(page, /og:description" content="₹19\.99 \(MRP ₹39\.99, 50% off\) on Shop/);
+  assert.match(page, /product:price:currency" content="INR"/);
   const spa = await fetch(`${base}/admin/users`);
   assert.equal(spa.status, 200);
   assert.match(spa.headers.get('content-security-policy'), /script-src 'self'/);

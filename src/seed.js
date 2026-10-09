@@ -1,71 +1,163 @@
-// Demo data. Run directly (`npm run seed`) to wipe and reseed data/deals.db.
+// Demo data (India). Run directly (`npm run seed`) to wipe and reseed data/deals.db.
 import path from 'node:path';
 import { mkdirSync, rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { openDb, ensureCategories, tx } from './db.js';
 import { hashPassword } from './auth.js';
-import { canonicalizeUrl, hashUrl } from './canonicalize.js';
+import { canonicalizeUrl, hashUrl, registrableDomain } from './canonicalize.js';
+import { createRepo } from './repo.js';
 
 export const DEMO_PASSWORD = 'password123';
 
 const USERS = [
-  ['admin', 'admin@dealshare.test', 'admin'],
-  ['mod_maya', 'maya@dealshare.test', 'moderator'],
-  ['alice', 'alice@dealshare.test', 'user'],
-  ['bargainbob', 'bob@dealshare.test', 'user'],
-  ['carol_saves', 'carol@dealshare.test', 'user'],
-  ['dealhunter_dan', 'dan@dealshare.test', 'user'],
-  ['erin', 'erin@dealshare.test', 'user'],
-  ['frugal_frank', 'frank@dealshare.test', 'user'],
+  ['admin', 'admin@sharedeals.in', 'admin'],
+  ['mod_priya', 'priya@sharedeals.in', 'moderator'],
+  ['rahul', 'rahul@sharedeals.in', 'user'],
+  ['deal_guru_amit', 'amit@sharedeals.in', 'user'],
+  ['sneha_saves', 'sneha@sharedeals.in', 'user'],
+  ['karan_k', 'karan@sharedeals.in', 'user'],
+  ['ananya', 'ananya@sharedeals.in', 'user'],
+  ['frugal_vikram', 'vikram@sharedeals.in', 'user'],
 ];
 
-const search = {
-  amazon: (q) => `https://www.amazon.com/s?k=${encodeURIComponent(q)}`,
-  bestbuy: (q) => `https://www.bestbuy.com/site/searchpage.jsp?st=${encodeURIComponent(q)}`,
-  walmart: (q) => `https://www.walmart.com/search?q=${encodeURIComponent(q)}`,
-  target: (q) => `https://www.target.com/s?searchTerm=${encodeURIComponent(q)}`,
-  costco: (q) => `https://www.costco.com/CatalogSearch?keyword=${encodeURIComponent(q)}`,
-  newegg: (q) => `https://www.newegg.com/p/pl?d=${encodeURIComponent(q)}`,
+// Seed links point at real retailer search pages so "Get deal" always lands somewhere useful.
+const q = encodeURIComponent;
+const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+const STORES = {
+  flipkart: ['Flipkart', (t) => `https://www.flipkart.com/search?q=${q(t)}`],
+  amazon: ['Amazon', (t) => `https://www.amazon.in/s?k=${q(t)}`],
+  myntra: ['Myntra', (t) => `https://www.myntra.com/${slug(t)}?rawQuery=${q(t)}`],
+  ajio: ['AJIO', (t) => `https://www.ajio.com/search/?text=${q(t)}`],
+  nykaa: ['Nykaa', (t) => `https://www.nykaa.com/search/result/?q=${q(t)}`],
+  meesho: ['Meesho', (t) => `https://www.meesho.com/search?q=${q(t)}`],
+  croma: ['Croma', (t) => `https://www.croma.com/searchB?q=${q(t)}`],
 };
-const STORE_NAMES = { amazon: 'Amazon', bestbuy: 'Best Buy', walmart: 'Walmart', target: 'Target', costco: 'Costco', newegg: 'Newegg' };
 
-// [title, category, store, full, price, hoursAgo, details, placeholder label]
+// [title, category, placeholder label, hoursAgo, details, offers: [store, MRP ₹, price ₹, note]]
+// Several products are listed at more than one store, each listing posted by a different user.
 const DEALS = [
-  ['Sony WH-1000XM5 Wireless Noise Cancelling Headphones', 'Electronics', 'bestbuy', 399.99, 279.99, 3, 'Lowest price I have seen outside Black Friday. All four colors. Free shipping or store pickup.', 'Headphones'],
-  ['Apple AirPods Pro 2 (USB-C)', 'Electronics', 'amazon', 249, 169, 7, 'Sold and shipped by Amazon. Price drops at checkout for some accounts.', 'AirPods'],
-  ['LG 65" C4 OLED 4K Smart TV', 'Electronics', 'costco', 2299.99, 1599.99, 20, 'Members only. Includes Costco 5-year warranty + extra 90-day return window.', 'OLED TV'],
-  ['Samsung 990 Pro 2TB NVMe SSD', 'Electronics', 'newegg', 249.99, 139.99, 30, 'Use promo code SSDFALL at checkout. Limit 2 per customer.', 'NVMe SSD'],
-  ['Anker 737 Power Bank 24,000mAh', 'Electronics', 'amazon', 149.99, 79.99, 50, 'Clip the on-page coupon for the extra $20 off.', 'Power Bank'],
-  ['Ninja AF101 4-Quart Air Fryer', 'Home & Kitchen', 'walmart', 129.99, 59, 5, 'Rollback price. Free shipping with Walmart+ or orders $35+.', 'Air Fryer'],
-  ['Instant Pot Duo 7-in-1, 6 Quart', 'Home & Kitchen', 'target', 99.99, 49.99, 26, 'Target Circle deal — add the offer in the app first.', 'Instant Pot'],
-  ['Dyson V8 Cordless Vacuum', 'Home & Kitchen', 'target', 469.99, 299.99, 70, 'Online only. Ships free.', 'Dyson V8'],
-  ['Lodge 12" Cast Iron Skillet', 'Home & Kitchen', 'amazon', 44.9, 24.9, 110, 'Classic. Pre-seasoned. Prime shipping.', 'Skillet'],
-  ["Levi's Men's 505 Regular Fit Jeans", 'Fashion', 'amazon', 69.5, 29.99, 14, 'Price varies by size/color — 32x32 dark stonewash is the one at $29.99.', "Levi's"],
-  ['Nike Revolution 7 Running Shoes', 'Fashion', 'walmart', 70, 39.97, 44, 'Most sizes still in stock as of posting.', 'Nike'],
-  ['Kirkland Signature Organic Extra Virgin Olive Oil, 2L', 'Grocery', 'costco', 29.99, 21.99, 9, 'In-warehouse and online. Instant savings through end of month.', 'Olive Oil'],
-  ['Starbucks Pike Place Whole Bean Coffee 28oz', 'Grocery', 'amazon', 24.99, 15.49, 60, 'Subscribe & Save brings it to ~$13.90.', 'Coffee'],
-  ['Nintendo Switch OLED — Mario Kart 8 Bundle', 'Gaming', 'target', 399.99, 349.99, 2, 'Bundle includes full game download code + 3 months Switch Online.', 'Switch'],
-  ['Xbox Wireless Controller — Carbon Black', 'Gaming', 'bestbuy', 59.99, 39.99, 18, 'Other colors $44.99.', 'Controller'],
-  ['Elden Ring (PS5)', 'Gaming', 'walmart', 59.99, 24.88, 90, 'Physical copy. Free 2-day shipping.', 'Elden Ring'],
-  ['Microsoft 365 Personal — 15 months', 'Software & Services', 'amazon', 99.99, 59.99, 36, 'Digital code. Stacks with existing subscriptions.', 'M365'],
-  ['LEGO Star Wars Millennium Falcon 75375', 'Toys & Kids', 'target', 84.99, 67.99, 12, '20% off with Target Circle. Great gift idea.', 'LEGO'],
-  ['Melissa & Doug Wooden Activity Table', 'Toys & Kids', 'walmart', 89.99, 54.99, 130, 'Assembly required.', 'Kids Table'],
-  ['Oral-B iO Series 5 Electric Toothbrush', 'Health & Beauty', 'amazon', 129.99, 69.99, 22, 'Lightning deal — may sell out.', 'Oral-B'],
-  ['CeraVe Moisturizing Cream 19oz', 'Health & Beauty', 'target', 19.99, 14.49, 85, 'Buy 2 get a $5 gift card.', 'CeraVe'],
-  ['Samsonite Freeform 2-Piece Hardside Luggage Set', 'Travel', 'costco', 249.99, 179.99, 40, 'Carry-on + large spinner. Members only.', 'Luggage'],
-  ['Logitech MX Master 3S Mouse', 'Electronics', 'newegg', 99.99, 69.99, 160, 'Graphite color only.', 'MX Master'],
-  ['Free: 3 months of Audible Premium Plus', 'Software & Services', 'amazon', 44.85, 0, 55, 'New members only. Cancel anytime.', 'Audible'],
+  ['Sony WH-1000XM6 Wireless Noise Cancelling Headphones', 'Electronics', 'Sony XM6', 4,
+    'Sony’s newest flagship ANC headphones. Lowest price since launch across stores — compare below.', [
+      ['amazon', 44990, 37990, '10% instant discount up to ₹1,500 with ICICI cards'],
+      ['flipkart', 44990, 38490, 'Extra ₹2,000 off with Flipkart Axis Bank card'],
+      ['croma', 44990, 39990, 'Free 1-year extended warranty with Croma ZipCare'],
+    ]],
+  ['Apple iPhone 15 (Black, 128 GB)', 'Mobiles', 'iPhone 15', 3,
+    'Exchange offers up to ₹40,000 depending on your old phone. Check delivery for your pincode.', [
+      ['flipkart', 69900, 57999, 'Extra ₹1,000 off with HDFC Bank credit cards'],
+      ['amazon', 69900, 59900, 'No-cost EMI on Amazon Pay ICICI card'],
+    ]],
+  ['boAt Airdopes 141 Bluetooth TWS Earbuds', 'Electronics', 'Airdopes 141', 7,
+    '42 hours playback, ENx noise cancellation for calls, IPX4.', [
+      ['amazon', 4490, 1099, 'Lightning deal — Prime members get next-day delivery in metros'],
+    ]],
+  ['Samsung Galaxy S24 FE 5G (8GB / 128GB)', 'Mobiles', 'Galaxy S24 FE', 20,
+    'Big price drop. Extra ₹2,000 off on exchange at both stores.', [
+      ['flipkart', 59999, 34999, 'No-cost EMI from ₹5,834/month'],
+      ['amazon', 59999, 35999, ''],
+    ]],
+  ['Puma Men Softride Running Shoes', 'Fashion', 'Puma', 14,
+    'Most sizes (UK 7–11) in stock as of posting.', [
+      ['myntra', 6999, 2449, 'Extra ₹200 off with coupon on your first Myntra order'],
+      ['ajio', 6999, 2519, 'AJIO points can be applied'],
+    ]],
+  ['Prestige Iris 750W Mixer Grinder (3 Jars)', 'Home & Kitchen', 'Mixer Grinder', 5,
+    '2-year warranty. Three stainless steel jars + juicer jar.', [
+      ['amazon', 4545, 2399, 'Clip the ₹200 coupon on the product page'],
+      ['flipkart', 4545, 2499, ''],
+    ]],
+  ['Libas Women Kurta with Palazzos & Dupatta Set', 'Fashion', 'Kurta Set', 26,
+    'End of Reason Sale price. Free delivery and easy 14-day returns.', [
+      ['myntra', 4999, 1399, ''],
+    ]],
+  ['Tata Sampann Unpolished Toor Dal, 1 kg (Pack of 2)', 'Grocery', 'Toor Dal', 9,
+    'Subscribe & Save brings it down a further 5%.', [
+      ['amazon', 398, 289, ''],
+    ]],
+  ['Maybelline New York Fit Me Matte + Poreless Foundation', 'Beauty & Personal Care', 'Fit Me', 12,
+    'Available in most shades.', [
+      ['nykaa', 649, 454, '30% off during Nykaa Pink Friday. Free gift above ₹999'],
+      ['amazon', 649, 469, ''],
+      ['myntra', 649, 487, ''],
+    ]],
+  ['U.S. Polo Assn. Men Slim Fit Polo T-shirt', 'Fashion', 'US Polo', 22,
+    'Prices vary by colour.', [
+      ['ajio', 1899, 759, 'Use code EXTRA300 on orders above ₹1,499'],
+    ]],
+  ['Cotton Printed Double Bedsheet with 2 Pillow Covers', 'Home & Kitchen', 'Bedsheet', 2,
+    'Check seller ratings before buying.', [
+      ['meesho', 1299, 349, 'Free delivery, Cash on Delivery available'],
+    ]],
+  ['Sony PlayStation 5 Slim Console (Digital Edition)', 'Gaming', 'PS5 Slim', 18,
+    'Limited stock at this price.', [
+      ['amazon', 44990, 37490, '₹3,000 instant discount on SBI credit cards'],
+      ['flipkart', 44990, 37990, ''],
+    ]],
+  ['Skechers Women Go Walk Flex Sneakers', 'Fashion', 'Skechers', 50,
+    'Flat 50% off.', [
+      ['ajio', 5999, 2999, ''],
+    ]],
+  ['American Tourister 3-Piece Trolley Luggage Set', 'Travel', 'Luggage', 40,
+    'Cabin + medium + large. Great for the wedding season.', [
+      ['ajio', 17500, 6299, ''],
+      ['amazon', 17500, 6999, ''],
+    ]],
+  ['The Derma Co 1% Hyaluronic Sunscreen SPF 50, 50 g', 'Beauty & Personal Care', 'Sunscreen', 36,
+    'Lightweight gel sunscreen.', [
+      ['nykaa', 599, 419, 'Buy 2, get an extra 10% off'],
+    ]],
+  ['Samsung 7 kg 5-Star Fully Automatic Front Load Washing Machine', 'Home & Kitchen', 'Washing Machine', 70,
+    'Free installation.', [
+      ['flipkart', 41900, 28990, '10% instant discount with SBI cards'],
+    ]],
+  ['Kids Remote Control Racing Car with Rechargeable Battery', 'Toys & Kids', 'RC Car', 55,
+    'Delivery in 5–7 days.', [
+      ['meesho', 1499, 449, 'COD available'],
+    ]],
+  ["Levi's Men 511 Slim Fit Jeans", 'Fashion', "Levi's", 44,
+    'Price varies by size and wash.', [
+      ['myntra', 3599, 1619, 'The 32 dark indigo is the one at ₹1,619'],
+    ]],
+  ['Philips BHH880 Heated Hair Straightening Brush', 'Beauty & Personal Care', 'Hair Brush', 85,
+    '2-year Philips warranty.', [
+      ['nykaa', 3195, 1999, 'Nykaa exclusive price'],
+    ]],
+  ['Motorola Edge 50 Fusion 5G (8GB / 128GB)', 'Mobiles', 'Moto Edge 50', 60,
+    'Free delivery.', [
+      ['flipkart', 25999, 20999, 'Includes ₹1,000 Axis Bank card offer'],
+    ]],
+  ["Women's Georgette Printed Saree with Blouse Piece", 'Fashion', 'Saree', 90,
+    'Lowest price this month.', [
+      ['meesho', 2499, 399, 'Free delivery, COD available'],
+    ]],
+  ['Hot Wheels 10-Car Pack', 'Toys & Kids', 'Hot Wheels', 130,
+    'Great Diwali gift. Assorted cars.', [
+      ['flipkart', 1299, 899, ''],
+    ]],
+  ['Kindle Paperwhite (16 GB) — 7" Display', 'Electronics', 'Kindle', 110,
+    'Bundle with a cover for ₹500 more.', [
+      ['amazon', 16999, 13999, ''],
+    ]],
+  ['Free: 3 months of Amazon Music Unlimited', 'Apps & Services', 'Music', 55,
+    'New subscribers only. Auto-renews at ₹119/month — cancel anytime.', [
+      ['amazon', 357, 0, ''],
+    ]],
+  // Posted separately before anyone noticed — shows up in Admin Mode → Duplicates for merging.
+  ['boAt Airdopes 141 TWS Earbuds with 42H Playtime', 'Electronics', 'Airdopes', 1,
+    'Flipkart has it slightly cheaper with the bank offer.', [
+      ['flipkart', 4490, 1199, '5% cashback with Flipkart Axis Bank card'],
+    ]],
 ];
 
 const COMMENTS = [
-  'Great price, just ordered one. Thanks OP!',
-  'Can confirm this works — price showed at checkout.',
-  'Was this cheaper last Black Friday?',
-  'Out of stock in my area, but shipping was available.',
-  'Bought one last month at full price… price adjustment time.',
-  'Mine arrived in 2 days, very happy with it.',
-  'Is this the newest model?',
-  'Coupon did not apply for me.',
+  'Got it with the HDFC card offer — final price was even lower. Thanks for posting!',
+  'Is Cash on Delivery available for this?',
+  'Not deliverable to my pincode 😕',
+  'It was cheaper during Big Billion Days.',
+  'Delivered in 2 days in Bengaluru, packaging was good.',
+  'Bank offer is not applying for me on the app.',
+  'Great that we can compare stores here — Amazon was cheaper for me after the card offer.',
+  'Bought one — quality is decent for the price.',
 ];
 
 function mulberry32(seed) {
@@ -80,6 +172,7 @@ function mulberry32(seed) {
 
 export function seed(db) {
   ensureCategories(db);
+  const repo = createRepo(db);
   const rand = mulberry32(42);
   const now = Date.now();
   const H = 3_600_000;
@@ -91,27 +184,37 @@ export function seed(db) {
       Number(db.prepare('INSERT INTO users (email, handle, password_hash, role, created_at) VALUES (?, ?, ?, ?, ?)').run(email, handle, pw, role, now - (60 - i) * 24 * H).lastInsertRowid),
     );
     const posters = userIds.slice(1);
+    const insertOffer = db.prepare(
+      `INSERT INTO offers (deal_id, submitted_by, store, store_key, source_url, canonical_url, canonical_url_hash, price_cents, full_price_cents, note, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    );
 
-    DEALS.forEach(([title, category, store, full, price, hoursAgo, details, label], i) => {
-      const url = search[store](title);
-      const canonical = canonicalizeUrl(url);
+    DEALS.forEach(([title, category, label, hoursAgo, details, offers], i) => {
       const created = now - hoursAgo * H;
-      const poster = posters[i % posters.length];
+      const creator = posters[i % posters.length];
       const hue = (i * 47) % 360;
       const dealId = Number(
         db
-          .prepare(
-            `INSERT INTO deals (submitted_by, title, image_url, category_id, full_price_cents, price_cents, store, source_url, canonical_url,
-                                canonical_url_hash, details, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          )
-          .run(poster, title, `/img/placeholder.svg?t=${encodeURIComponent(label)}&h=${hue}`, cat[category], Math.round(full * 100), Math.round(price * 100),
-            STORE_NAMES[store], url, canonical, hashUrl(canonical), details, created, created).lastInsertRowid,
+          .prepare('INSERT INTO deals (submitted_by, title, image_url, category_id, details, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+          .run(creator, title, `/img/placeholder.svg?t=${encodeURIComponent(label)}&h=${hue}`, cat[category], details, created, created).lastInsertRowid,
       );
+
+      offers.forEach(([store, mrp, price, note], j) => {
+        const [storeName, makeUrl] = STORES[store];
+        const url = makeUrl(title);
+        const canonical = canonicalizeUrl(url);
+        // First listing is the creator's; extra stores were added later by other users.
+        const poster = j === 0 ? creator : posters[(i + j * 3) % posters.length];
+        const at = created + j * 1.5 * H;
+        insertOffer.run(dealId, poster, storeName, registrableDomain(new URL(canonical).hostname), url, canonical, hashUrl(canonical),
+          Math.round(price * 100), Math.round(mrp * 100), note, at, at);
+      });
+      repo.refreshDealPricing(dealId);
 
       let up = 0;
       let down = 0;
       for (const voter of userIds) {
-        if (voter === poster) continue;
+        if (voter === creator) continue;
         const r = rand();
         const v = r < 0.62 ? 1 : r < 0.72 ? -1 : 0;
         if (!v) continue;
@@ -132,11 +235,12 @@ export function seed(db) {
       }
     });
 
-    // A few bookmarks and an open report so Admin Mode has something to show.
-    const alice = userIds[2];
-    for (const d of [1, 6, 14]) db.prepare('INSERT OR IGNORE INTO bookmarks (user_id, deal_id, created_at) VALUES (?, ?, ?)').run(alice, d, now - H);
-    db.prepare("INSERT INTO reports (reporter_id, target_type, target_id, reason, created_at) VALUES (?, 'deal', 9, 'expired: price is back to $44.90', ?)").run(userIds[4], now - 2 * H);
-    db.prepare("INSERT INTO reports (reporter_id, target_type, target_id, reason, created_at) VALUES (?, 'deal', 9, 'expired', ?)").run(userIds[5], now - H);
+    // A few bookmarks and open reports so Admin Mode has something to show.
+    const rahul = userIds[2];
+    for (const d of [1, 6, 14]) db.prepare('INSERT OR IGNORE INTO bookmarks (user_id, deal_id, created_at) VALUES (?, ?, ?)').run(rahul, d, now - H);
+    const dalOffer = db.prepare('SELECT o.id FROM offers o JOIN deals d ON d.id = o.deal_id WHERE d.title LIKE ?').get('Tata Sampann%').id;
+    db.prepare("INSERT INTO reports (reporter_id, target_type, target_id, reason, created_at) VALUES (?, 'offer', ?, 'expired: price is back to ₹398', ?)").run(userIds[4], dalOffer, now - 2 * H);
+    db.prepare("INSERT INTO reports (reporter_id, target_type, target_id, reason, created_at) VALUES (?, 'offer', ?, 'expired', ?)").run(userIds[5], dalOffer, now - H);
   });
 }
 

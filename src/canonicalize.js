@@ -18,8 +18,39 @@ const TRACKING_PREFIXES = ['utm_', 'pd_rd_', 'pf_rd_', 'mkt_', 'hsa_', 'oly_'];
 
 export const URL_SHORTENERS = new Set([
   'bit.ly', 'tinyurl.com', 't.co', 'amzn.to', 'a.co', 'goo.gl', 'ow.ly', 'buff.ly', 'rebrand.ly',
-  'shorturl.at', 'cutt.ly', 'is.gd', 'tiny.cc', 'bl.ink', 'wmt.co', 'tgt.gifts', 'linktr.ee',
+  'shorturl.at', 'cutt.ly', 'is.gd', 'tiny.cc', 'bl.ink', 'linktr.ee',
+  'fkrt.it', 'fkrt.co', 'amzn.in', 'myntr.it',
 ]);
+
+// Indian marketplaces: reduce product URLs to the id that identifies the product, so the same
+// item shared from the app, search results, or an affiliate link canonicalizes identically.
+function retailerCanonical(host, url) {
+  const p = url.pathname;
+  const m = (re) => p.match(re)?.[1];
+  if (host === 'flipkart.com' || host === 'dl.flipkart.com') {
+    const itm = m(/\/p\/(itm[a-z0-9]+)/i);
+    if (itm) {
+      const pid = url.searchParams.get('pid'); // pid identifies the variant (colour / storage)
+      return `https://flipkart.com/p/${itm.toLowerCase()}${pid ? `?pid=${pid.toUpperCase()}` : ''}`;
+    }
+  }
+  if (host === 'myntra.com') {
+    const id = m(/\/(\d{5,})(?:\/buy)?\/?$/);
+    if (id) return `https://myntra.com/${id}`;
+  }
+  if (host === 'nykaa.com' || host === 'nykaafashion.com') {
+    const id = m(/\/p\/(\d+)/);
+    if (id) {
+      const sku = url.searchParams.get('skuId'); // shade / size variant
+      return `https://${host}/p/${id}${sku ? `?skuId=${sku}` : ''}`;
+    }
+  }
+  if (host === 'ajio.com' || host === 'meesho.com') {
+    const id = m(/\/p\/([a-z0-9_]+)/i);
+    if (id) return `https://${host}/p/${id.toLowerCase()}`;
+  }
+  return null;
+}
 
 function isTracking(key) {
   const k = key.toLowerCase();
@@ -53,6 +84,8 @@ export function canonicalizeUrl(input) {
     const asin = url.pathname.match(/\/(?:dp|gp\/product|gp\/aw\/d|exec\/obidos\/asin)\/([A-Z0-9]{10})/i);
     if (asin) return `https://${host}/dp/${asin[1].toUpperCase()}`;
   }
+  const retailer = retailerCanonical(host, url);
+  if (retailer) return retailer;
 
   let path = url.pathname.replace(/\/{2,}/g, '/');
   path = path.replace(/\/ref=[^/]*$/i, ''); // Amazon-style trailing /ref=xyz
@@ -66,6 +99,14 @@ export function canonicalizeUrl(input) {
 
   // Scheme is normalized to https: http/https variants of the same page are the same deal.
   return `https://${host}${path}${query}`;
+}
+
+/** "www.shop.co.in" → "shop.co.in", "dl.flipkart.com" → "flipkart.com". Identifies a store. */
+export function registrableDomain(hostname) {
+  const labels = String(hostname).toLowerCase().replace(/^\[|\]$/g, '').split('.');
+  // Second-level country domains like shop.co.in need three labels, not two.
+  const n = labels.length >= 3 && /^(co|net|org|gov|ac|firm|gen|ind)$/.test(labels.at(-2)) ? 3 : 2;
+  return labels.slice(-n).join('.');
 }
 
 export function hashUrl(canonical) {

@@ -58,6 +58,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .logo { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 20px; text-decoration: none; letter-spacing: -0.02em; white-space: nowrap; }
 .logo img { width: 30px; height: 30px; }
 .logo span { color: var(--accent); }
+.logo .tld { font-size: 0.7em; font-weight: 700; color: var(--muted); margin-left: 1px; }
 .search { flex: 1; max-width: 520px; position: relative; }
 .search input { width: 100%; padding: 9px 14px 9px 36px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface-2); }
 .search::before { content: '⌕'; position: absolute; left: 13px; top: 50%; transform: translateY(-52%); color: var(--muted); font-size: 18px; }

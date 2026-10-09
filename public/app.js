@@ -1,4 +1,4 @@
-// DealShare web client — vanilla JS SPA (history routing, no build step).
+// ShareDeals web client — vanilla JS SPA (history routing, no build step).
 
 // ============================================================ utilities
 
@@ -40,8 +40,10 @@ async function api(path, { method = 'GET', body } = {}) {
   return data;
 }
 
+// India-only site: rupees with Indian digit grouping (₹1,29,999).
 const money = (n) =>
-  n == null ? '' : n === 0 ? 'FREE' : `$${n.toLocaleString('en-US', { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 })}`;
+  n == null ? '' : n === 0 ? 'FREE' : `₹${n.toLocaleString('en-IN', { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 })}`;
+const parseMoney = (s) => Number(String(s).replace(/^\s*(?:₹|rs\.?|inr)/i, '').replace(/[₹,\s]/g, ''));
 
 function timeAgo(ts) {
   const s = Math.max(1, Math.round((Date.now() - ts) / 1000));
@@ -52,9 +54,9 @@ function timeAgo(ts) {
   if (h < 24) return `${h}h ago`;
   const d = Math.round(h / 24);
   if (d < 30) return `${d}d ago`;
-  return new Date(ts).toLocaleDateString();
+  return new Date(ts).toLocaleDateString('en-IN');
 }
-const fullDate = (ts) => new Date(ts).toLocaleString();
+const fullDate = (ts) => new Date(ts).toLocaleString('en-IN');
 const placeholder = (t) => `/img/placeholder.svg?t=${encodeURIComponent(t || 'Deal')}`;
 const isMod = () => state.user && ['moderator', 'admin'].includes(state.user.role);
 const isAdmin = () => state.user?.role === 'admin';
@@ -169,10 +171,10 @@ function reportModal(type, id) {
 
 // ============================================================ shared components
 
-function priceBlock(d) {
+function priceBlock(d, { mrpLabel = false } = {}) {
   return html`<div class="prices">
     <span class="price">${money(d.price)}</span>
-    ${d.fullPrice ? html`<span class="was">${money(d.fullPrice)}</span>` : ''}
+    ${d.fullPrice ? html`${mrpLabel ? html`<span class="muted small">MRP</span>` : ''}<span class="was">${money(d.fullPrice)}</span>` : ''}
   </div>`;
 }
 
@@ -326,7 +328,7 @@ function renderChrome() {
   const u = state.user;
   const q = new URLSearchParams(location.search).get('q') || '';
   $('#topbar').innerHTML = String(html`<div class="topbar-inner">
-    <a class="logo" href="/"><img src="/favicon.svg" alt=""><span class="wordmark">Deal<span>Share</span></span></a>
+    <a class="logo" href="/"><img src="/favicon.svg" alt=""><span class="wordmark">Share<span>Deals</span><small class="tld">.in</small></span></a>
     <form class="search" id="search-form" role="search">
       <input type="search" name="q" placeholder="Search deals or stores" aria-label="Search deals" value="${q}">
     </form>
@@ -414,7 +416,7 @@ async function renderRoute() {
 }
 
 function setPage(title, content) {
-  document.title = title ? `${title} — DealShare` : 'DealShare — community-vetted deals';
+  document.title = title ? `${title} — ShareDeals` : 'ShareDeals — community-vetted deals';
   app.innerHTML = String(content);
 }
 
@@ -540,12 +542,12 @@ async function detailPage({ params, alive }) {
           </div>
           <h1>${d.title}</h1>
           <div class="prices" style="gap:12px;align-items:center">
-            ${priceBlock(d)}
+            ${priceBlock(d, { mrpLabel: true })}
             ${d.discountPct ? html`<span class="off-badge">${d.discountPct}% off</span>` : ''}
           </div>
           <div class="actions">
             ${voteWidget(d, { large: true })}
-            <a class="btn btn-primary btn-lg" href="${d.sourceUrl}" target="_blank" rel="noopener noreferrer nofollow ugc">Get deal at ${d.store} ↗</a>
+            <a class="btn btn-primary btn-lg" href="${d.sourceUrl}" target="_blank" rel="noopener noreferrer nofollow ugc">Get deal on ${d.store} ↗</a>
           </div>
           <div class="actions" style="margin-top:0">
             ${removed ? '' : html`<button class="btn ${d.bookmarked ? 'on' : ''}" data-action="bookmark" data-id="${d.id}" aria-pressed="${d.bookmarked}">♡ <span class="lbl">${d.bookmarked ? 'Saved' : 'Save'}</span></button>`}
@@ -636,8 +638,8 @@ function dealForm(v, { mode, notice = '' }) {
         <div class="field"><label for="f-image">Image URL</label><input id="f-image" name="imageUrl" type="url" value="${v.imageUrl || ''}" placeholder="https://…">
           <span class="hint">Auto-filled from the page when possible — paste a different image link to replace it.</span></div>
         <div class="field-row">
-          <div class="field"><label for="f-price">Deal price ($)</label><input id="f-price" name="price" inputmode="decimal" required value="${v.price ?? ''}" placeholder="0 for free"></div>
-          <div class="field"><label for="f-full">Full price ($)</label><input id="f-full" name="fullPrice" inputmode="decimal" value="${v.fullPrice ?? ''}" placeholder="Optional"></div>
+          <div class="field"><label for="f-price">Deal price (₹)</label><input id="f-price" name="price" inputmode="decimal" required value="${v.price ?? ''}" placeholder="0 for free"></div>
+          <div class="field"><label for="f-full">MRP (₹)</label><input id="f-full" name="fullPrice" inputmode="decimal" value="${v.fullPrice ?? ''}" placeholder="Optional"></div>
         </div>
         <p class="discount-preview" id="discount-preview"></p>
         <div class="field-row">
@@ -649,7 +651,7 @@ function dealForm(v, { mode, notice = '' }) {
             </select></div>
         </div>
         <div class="field"><label for="f-details">Deal details</label>
-          <textarea id="f-details" name="details" maxlength="5000" placeholder="Promo code, expiration, shipping or membership requirements, stacking tips…">${v.details || ''}</textarea></div>
+          <textarea id="f-details" name="details" maxlength="5000" placeholder="Coupon code, bank/card offers, expiry, COD or pincode availability, delivery notes…">${v.details || ''}</textarea></div>
         <div style="display:flex;gap:10px;justify-content:flex-end">
           <a class="btn" href="${mode === 'edit' ? `/deals/${v.id}` : '/'}">Cancel</a>
           <button class="btn btn-primary" id="submit-btn">${mode === 'edit' ? 'Save changes' : 'Post deal'}</button>
@@ -668,8 +670,8 @@ function bindDealForm(form, { url, onSubmit }) {
   });
   const disc = $('#discount-preview');
   const updateDisc = () => {
-    const p = Number(form.price.value.replace(/[$,]/g, ''));
-    const f = Number(form.fullPrice.value.replace(/[$,]/g, ''));
+    const p = parseMoney(form.price.value);
+    const f = parseMoney(form.fullPrice.value);
     disc.textContent = form.price.value && form.fullPrice.value && f > p && p >= 0 ? `${Math.round((1 - p / f) * 100)}% off` : '';
   };
   form.price.addEventListener('input', updateDisc);
@@ -705,7 +707,7 @@ async function submitPage({ query, alive }) {
         <form id="url-form">
           ${error}
           <div class="field"><label for="u-url">Paste the deal link</label>
-            <input id="u-url" name="url" type="url" required placeholder="https://www.retailer.com/product/…" value="${value}" autofocus>
+            <input id="u-url" name="url" type="url" required placeholder="https://www.flipkart.com/… or a Myntra, Amazon, AJIO, Nykaa, Meesho link" value="${value}" autofocus>
             <span class="hint">We'll check it hasn't been posted already and try to fill in the title, image, price, and store for you.</span></div>
           <button class="btn btn-primary" id="url-btn">Continue</button>
         </form>
@@ -808,7 +810,7 @@ async function loginPage({ query }) {
         <button class="btn btn-primary" style="width:100%">Sign in</button>
       </form>
       <p class="muted small" style="text-align:center">New here? <a href="/register?next=${encodeURIComponent(nextUrl(query))}">Create an account</a></p>
-      <p class="notice info small">Demo accounts (password <code>password123</code>): <code>admin</code>, <code>mod_maya</code>, <code>alice</code></p>
+      <p class="notice info small">Demo accounts (password <code>password123</code>): <code>admin</code>, <code>mod_priya</code>, <code>rahul</code></p>
     </div>`,
   );
   authForm('#login-form', '/api/auth/login', query);
@@ -1074,7 +1076,7 @@ async function adminUsers({ shell, query, alive, reload }) {
           <td><span class="badge role-${u.role}">${u.role}</span></td>
           <td><span class="badge status-${u.status}">${u.status}</span></td>
           <td class="num">${u.dealCount}</td><td class="num">${u.removedCount}</td><td class="num">${u.commentCount}</td>
-          <td>${new Date(u.createdAt).toLocaleDateString()}</td>
+          <td>${new Date(u.createdAt).toLocaleDateString('en-IN')}</td>
           <td class="actions-cell">${userActions(u)}</td>
         </tr>`,
       )}</tbody>

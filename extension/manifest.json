@@ -1,10 +1,10 @@
 {
   "manifest_version": 3,
-  "name": "DealShare — Post this deal",
+  "name": "ShareDeals — Post this deal",
   "version": "1.0.0",
-  "description": "One-click submission of the product page you're viewing to DealShare.",
+  "description": "One-click submission of the product page you're viewing to ShareDeals.",
   "action": {
-    "default_title": "Post this page to DealShare",
+    "default_title": "Post this page to ShareDeals",
     "default_icon": { "32": "icon32.png", "128": "icon128.png" }
   },
   "icons": { "32": "icon32.png", "128": "icon128.png" },

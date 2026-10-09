@@ -1,4 +1,4 @@
-// Toolbar click → open DealShare's submit flow for the current tab in a popup window.
+// Toolbar click → open ShareDeals's submit flow for the current tab in a popup window.
 // The popup is a normal first-party page, so it reuses the user's web session, the
 // server-side duplicate check, auto-populate, and the review-and-edit step (PRD §9.3).
 // Nothing is posted until the user confirms in that window.

@@ -5,13 +5,13 @@ import https from 'node:https';
 import dns from 'node:dns';
 import net from 'node:net';
 import zlib from 'node:zlib';
-import { isShortener, parseDealUrl } from './canonicalize.js';
+import { isShortener, parseDealUrl, registrableDomain } from './canonicalize.js';
 
 const MAX_BYTES = 2_000_000;
 const TIMEOUT_MS = 8000;
 const MAX_REDIRECTS = 5;
 const USER_AGENT =
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Safari/537.36 DealShareBot/1.0';
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Safari/537.36 ShareDealsBot/1.0 (+https://sharedeals.in)';
 
 // ---------- SSRF guard: never let a pasted URL reach internal addresses ----------
 
@@ -67,7 +67,7 @@ function requestOnce(url, { maxBytes }) {
       headers: {
         'user-agent': USER_AGENT,
         accept: 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.5',
-        'accept-language': 'en-US,en;q=0.9',
+        'accept-language': 'en-IN,en;q=0.9,hi;q=0.6',
         'accept-encoding': 'gzip, deflate, br',
       },
     });
@@ -190,7 +190,8 @@ function findProduct(html) {
 export function parsePrice(v) {
   if (v == null || v === '') return null;
   if (typeof v === 'number') return Number.isFinite(v) && v >= 0 ? Math.round(v * 100) / 100 : null;
-  const m = String(v).replace(/[\s,](?=\d{3}\b)/g, '').match(/\d+(?:\.\d{1,2})?/);
+  // Commas are only ever digit grouping here — including Indian lakh grouping (₹1,29,999).
+  const m = String(v).replace(/[,\s]/g, '').match(/\d+(?:\.\d{1,2})?/);
   return m ? Number(m[0]) : null;
 }
 
@@ -198,19 +199,20 @@ function first(v) {
   return Array.isArray(v) ? v[0] : v;
 }
 
+// Indian retailers (the site is India-focused). Unknown hosts fall back to a capitalized domain name.
 const KNOWN_STORES = {
-  'amazon.com': 'Amazon', 'bestbuy.com': 'Best Buy', 'walmart.com': 'Walmart', 'target.com': 'Target',
-  'costco.com': 'Costco', 'newegg.com': 'Newegg', 'homedepot.com': 'The Home Depot', 'lowes.com': "Lowe's",
-  'ebay.com': 'eBay', 'macys.com': "Macy's", 'nordstrom.com': 'Nordstrom', 'kohls.com': "Kohl's",
-  'bhphotovideo.com': 'B&H Photo', 'samsclub.com': "Sam's Club", 'apple.com': 'Apple', 'nike.com': 'Nike',
-  'steampowered.com': 'Steam', 'wayfair.com': 'Wayfair', 'adorama.com': 'Adorama', 'gamestop.com': 'GameStop',
+  'flipkart.com': 'Flipkart', 'myntra.com': 'Myntra', 'amazon.in': 'Amazon', 'amazon.com': 'Amazon',
+  'ajio.com': 'AJIO', 'nykaa.com': 'Nykaa', 'nykaafashion.com': 'Nykaa Fashion', 'meesho.com': 'Meesho',
+  'tatacliq.com': 'Tata CLiQ', 'croma.com': 'Croma', 'reliancedigital.in': 'Reliance Digital', 'jiomart.com': 'JioMart',
+  'bigbasket.com': 'BigBasket', 'snapdeal.com': 'Snapdeal', 'firstcry.com': 'FirstCry', 'lenskart.com': 'Lenskart',
+  'decathlon.in': 'Decathlon', 'vijaysales.com': 'Vijay Sales', 'purplle.com': 'Purplle', 'shoppersstop.com': 'Shoppers Stop',
+  'pepperfry.com': 'Pepperfry', 'urbanladder.com': 'Urban Ladder', 'boat-lifestyle.com': 'boAt', 'apple.com': 'Apple',
 };
 
 export function storeFromHost(hostname) {
-  const host = hostname.toLowerCase().replace(/^(www|m|smile|store|shop)\./, '');
-  const base = host.split('.').slice(-2).join('.');
+  const base = registrableDomain(hostname);
   if (KNOWN_STORES[base]) return KNOWN_STORES[base];
-  const name = host.split('.').slice(-2, -1)[0] || host;
+  const name = base.split('.')[0] || hostname;
   return name.charAt(0).toUpperCase() + name.slice(1);
 }
 
@@ -256,19 +258,26 @@ export function extractDealFields(html, pageUrl) {
 
   const store = meta['og:site_name'] || storeFromHost(url.hostname);
 
+  // Product identifiers let us recognise the same product across different stores.
+  const gtinRaw = product && (product.gtin13 || product.gtin12 || product.gtin14 || product.gtin8 || product.gtin || offers?.gtin13 || offers?.gtin);
+  const gtin = gtinRaw && /^\d{8,14}$/.test(String(gtinRaw).trim()) ? String(gtinRaw).trim().padStart(14, '0') : null;
+  const mpn = product?.mpn ? String(product.mpn).trim().slice(0, 64) : null;
+
   return {
     title: title ? String(title).replace(/\s+/g, ' ').trim().slice(0, 200) : '',
     imageUrl: image || '',
     price,
     fullPrice,
     store: String(store).slice(0, 80),
+    gtin,
+    mpn,
   };
 }
 
 /** Fetch + extract. Never throws for scrape failures — returns { ok:false, reason } instead (PRD §9.1). */
 export async function autoPopulate(rawUrl, fetcher = safeFetch) {
   const url = parseDealUrl(rawUrl);
-  const fallback = { title: '', imageUrl: '', price: null, fullPrice: null, store: storeFromHost(url.hostname) };
+  const fallback = { title: '', imageUrl: '', price: null, fullPrice: null, store: storeFromHost(url.hostname), gtin: null, mpn: null };
   try {
     const res = await fetcher(url);
     const ct = String(res.headers?.['content-type'] || '');
