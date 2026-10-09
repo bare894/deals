@@ -5,7 +5,7 @@ import { autoPopulate, resolveShortener } from './scrape.js';
 import { SESSION_COOKIE, parseCookies, userForToken } from './auth.js';
 import { HttpError, clientIp, createRouter, escapeHtml, inr, makeRateLimiter, readJson } from './http.js';
 import { createRepo } from './repo.js';
-import { ROLE_RANK } from './routes/common.js';
+import { APPROVED_STORES, ROLE_RANK } from './routes/common.js';
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerDealRoutes } from './routes/deals.js';
 import { registerOfferRoutes } from './routes/offers.js';
@@ -63,13 +63,14 @@ export function createApp({
   secureCookies = false,
   publicUrl = process.env.PUBLIC_URL,
   oauth: oauthConfig = oauthConfigFromEnv(),
+  approvedStores = APPROVED_STORES,
   oauthFetch,
 }) {
   const { route, match } = createRouter();
   const repo = createRepo(db);
   const rateLimit = makeRateLimiter(RATE_LIMITS, rateLimits);
   const oauth = createOAuth({ db, config: oauthConfig, secureCookies, baseUrl: (req) => baseUrl(req), rateLimit, fetchImpl: oauthFetch });
-  const ctx = { route, db, repo, rateLimit, scraper, resolveUrl, secureCookies, oauthProviders: oauth.enabled };
+  const ctx = { route, db, repo, rateLimit, scraper, resolveUrl, secureCookies, oauthProviders: oauth.enabled, approvedStores };
   registerAuthRoutes(ctx);
   registerDealRoutes(ctx);
   registerOfferRoutes(ctx);
@@ -190,7 +191,7 @@ export function createApp({
     if ((r.opts.active || r.opts.role) && user.status !== 'active') throw new HttpError(403, 'Your account is suspended');
 
     const cookies = [];
-    const body = mutating ? await readJson(req) : {};
+    const body = mutating ? await readJson(req, r.opts.maxBody) : {};
     const result = await r.handler({
       req, params, query: url.searchParams, body, user, token, ip: clientIp(req), setCookie: (c) => cookies.push(c),
     });

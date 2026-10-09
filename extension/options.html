@@ -7,12 +7,14 @@
       body { font: 14px/1.5 -apple-system, Segoe UI, sans-serif; padding: 20px; max-width: 460px; }
       input { width: 100%; padding: 8px; box-sizing: border-box; margin: 6px 0 12px; }
       button { padding: 8px 16px; }
+      .hint { color: #666; font-size: 13px; margin: -6px 0 12px; }
     </style>
   </head>
   <body>
     <h1><img src="logo.png" alt="ShareDeals.in" height="48"></h1>
     <label for="base">ShareDeals site URL</label>
     <input id="base" type="url" placeholder="https://sharedeals.in">
+    <p class="hint">Leave as <code>https://sharedeals.in</code>. For local development use <code>http://localhost:3000</code>; a Railway preview address (<code>…up.railway.app</code>) also works.</p>
     <button id="save">Save</button> <span id="status"></span>
     <script src="options.js"></script>
   </body>

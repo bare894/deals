@@ -183,3 +183,31 @@ test('Amazon.in pages: price, MRP, title, image and category without JSON-LD', (
   assert.equal(f.fullPrice, 55999);
   assert.equal(f.category, 'Mobiles');
 });
+
+test('only approved stores can be posted; short links are judged by where they lead', async () => {
+  const { resolveLink } = await import('../src/routes/common.js');
+  let fetched = 0;
+  const follow = (to) => async (u) => {
+    fetched++;
+    return new URL(to ?? u);
+  };
+  const ok = async (url, to) => (await resolveLink(url, follow(to))).storeKey;
+  const refused = async (url, to) => {
+    await assert.rejects(resolveLink(url, follow(to)), (err) => err.status === 400 && /can only be posted from Amazon, Flipkart/.test(err.message));
+  };
+
+  assert.equal(await ok('https://www.amazon.in/dp/B0GP8SY9MB'), 'amazon.in');
+  assert.equal(await ok('amazon.in/dp/B0GP8SY9MB'), 'amazon.in');
+  assert.equal(await ok('https://dl.flipkart.com/s/abc123'), 'flipkart.com');
+  for (const u of ['https://www.tatacliq.com/p-1', 'https://www.jiomart.com/p/x', 'https://www.snapdeal.com/product/x/1', 'https://www.nykaa.com/x/p/1']) await ok(u);
+
+  fetched = 0;
+  await refused('https://www.amazon.com/dp/B0GP8SY9MB'); // not amazon.in
+  await refused('https://www.nykaafashion.com/p/1');
+  await refused('https://flipkart.com.deals-offer.in/p/1'); // look-alike
+  await refused('https://www.shop.com/item/1');
+  assert.equal(fetched, 0, 'non-approved sites are refused without being fetched');
+
+  assert.equal(await ok('https://amzn.in/d/abc', 'https://www.amazon.in/dp/B0GP8SY9MB'), 'amazon.in');
+  await refused('https://bit.ly/xyz', 'https://www.randomshop.com/p/1');
+});

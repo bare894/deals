@@ -98,12 +98,12 @@ export function createRouter() {
   return { route, match };
 }
 
-export async function readJson(req) {
+export async function readJson(req, maxBytes = 100_000) {
   const chunks = [];
   let size = 0;
   for await (const c of req) {
     size += c.length;
-    if (size > 100_000) throw new HttpError(413, 'Request too large');
+    if (size > maxBytes) throw new HttpError(413, 'Request too large');
     chunks.push(c);
   }
   if (!chunks.length) return {};

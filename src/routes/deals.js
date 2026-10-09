@@ -2,9 +2,10 @@
 import { tx } from '../db.js';
 import { HttpError, intParam, str } from '../http.js';
 import { duplicateLinkError, storeConflictError } from '../repo.js';
+import { extractDealFields } from '../scrape.js';
 import { REPORT_REASONS, isMod, resolveLink, validateDealBody, validateOfferBody } from './common.js';
 
-export function registerDealRoutes({ route, db, repo, rateLimit, scraper, resolveUrl }) {
+export function registerDealRoutes({ route, db, repo, rateLimit, scraper, resolveUrl, approvedStores }) {
   // ------------------------------------------------------------ discovery (§6, §7)
 
   route('GET', '/api/home', async ({ user }) => {
@@ -50,10 +51,12 @@ export function registerDealRoutes({ route, db, repo, rateLimit, scraper, resolv
   /**
    * Step 1 of posting: dedup the exact link, scrape the page, and look for the same product
    * already posted from another store. With `dealId`, the user is adding a store to that deal.
+   * `html` (optional) is the browser extension's snapshot of the page as the user sees it: read
+   * first, since stores often block requests from servers; we only fetch to fill gaps.
    */
-  route('POST', '/api/deals/prefill', { auth: true, active: true }, async ({ body, user }) => {
+  route('POST', '/api/deals/prefill', { auth: true, active: true, maxBody: 1_000_000 }, async ({ body, user }) => {
     rateLimit('scrape', user.id);
-    const link = await resolveLink(body.url, resolveUrl);
+    const link = await resolveLink(body.url, resolveUrl, approvedStores);
     const dup = await repo.findActiveOfferByHash(link.hash);
     if (dup) throw duplicateLinkError(dup);
     const dealId = Number(body.dealId) || 0;
@@ -61,7 +64,16 @@ export function registerDealRoutes({ route, db, repo, rateLimit, scraper, resolv
       const existing = await repo.storeOnDeal(dealId, link.storeKey);
       if (existing) throw storeConflictError(existing);
     }
-    const result = await scraper(link.resolved.href);
+    let result = null;
+    if (typeof body.html === 'string' && body.html.length) {
+      const f = extractDealFields(body.html, link.resolved.href);
+      if (f.title || f.price != null) result = { ok: true, reason: null, fields: f };
+    }
+    if (!result || !result.fields.title || result.fields.price == null || !result.fields.imageUrl) {
+      const fetched = await scraper(link.resolved.href);
+      if (!result) result = fetched;
+      else for (const [k, v] of Object.entries(fetched.fields || {})) if ((result.fields[k] ?? '') === '' && v != null && v !== '') result.fields[k] = v;
+    }
     const fields = { ...result.fields };
     // The scraper names one of the site's categories; the form needs its id (admins can hide/rename them).
     if (fields.category) {
@@ -73,7 +85,7 @@ export function registerDealRoutes({ route, db, repo, rateLimit, scraper, resolv
 
   route('POST', '/api/deals', { auth: true, active: true }, async ({ body, user }) => {
     rateLimit('submit', user.id);
-    const link = await resolveLink(body.url, resolveUrl);
+    const link = await resolveLink(body.url, resolveUrl, approvedStores);
     const deal = await validateDealBody(db, body);
     const offer = validateOfferBody(body);
     const dup = await repo.findActiveOfferByHash(link.hash);

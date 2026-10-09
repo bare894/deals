@@ -1,12 +1,13 @@
 import { HttpError, str, isUniqueViolation } from '../http.js';
 import { createSession, destroySession, hashPassword, sessionCookie, verifyPassword } from '../auth.js';
-import { publicUser } from './common.js';
+import { APPROVED_STORES, publicUser } from './common.js';
 
-export function registerAuthRoutes({ route, db, rateLimit, secureCookies, oauthProviders = [] }) {
+export function registerAuthRoutes({ route, db, rateLimit, secureCookies, oauthProviders = [], approvedStores = APPROVED_STORES }) {
   route('GET', '/api/meta', async ({ user }) => ({
     user: publicUser(user),
     oauth: oauthProviders,
     demo: process.env.NODE_ENV !== 'production',
+    stores: approvedStores ? Object.values(approvedStores) : [],
     categories: await db.all("SELECT id, name, slug FROM categories WHERE active = 1 ORDER BY name = 'Other', name"),
   }));
 

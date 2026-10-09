@@ -1,14 +1,37 @@
 {
   "manifest_version": 3,
-  "name": "ShareDeals — Post this deal",
-  "version": "1.0.0",
-  "description": "One-click submission of the product page you're viewing to ShareDeals.",
+  "name": "ShareDeals \u2014 Post this deal",
+  "version": "1.1.1",
+  "description": "Post the product you're viewing on Amazon, Flipkart, Myntra and other approved stores to ShareDeals.in, with the details filled in.",
   "action": {
     "default_title": "Post this page to ShareDeals",
-    "default_icon": { "32": "icon32.png", "128": "icon128.png" }
+    "default_icon": {
+      "16": "icon16.png",
+      "32": "icon32.png",
+      "48": "icon48.png",
+      "128": "icon128.png"
+    }
   },
-  "icons": { "32": "icon32.png", "128": "icon128.png" },
-  "background": { "service_worker": "background.js" },
+  "icons": {
+    "16": "icon16.png",
+    "32": "icon32.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
   "options_page": "options.html",
-  "permissions": ["activeTab", "storage"]
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://sharedeals.in/*",
+    "https://www.sharedeals.in/*",
+    "https://*.up.railway.app/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
+  ]
 }

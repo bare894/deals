@@ -1,5 +1,7 @@
 # ShareDeals
 
+> Deployment, architecture decisions and known issues: see [PROJECT_NOTES.md](PROJECT_NOTES.md).
+
 A Slickdeals-style community deals platform **for India**, built from [prd.md](prd.md). Users post deals from Flipkart, Amazon.in, Myntra, AJIO, Nykaa, Meesho and other retailers by pasting a URL, and the community votes, comments, and saves them. Moderators and Admins keep the catalog clean from a desktop-web **Admin Mode**.
 
 **India localization:**
@@ -62,7 +64,13 @@ Other choices: suspended users can browse but not post, vote, or comment. Banned
 
 ## Browser extension (PRD §9.3)
 
-`extension/` is an unpacked Chrome/Edge MV3 extension. To install it, open `chrome://extensions`, enable Developer mode, click **Load unpacked**, and select the `extension/` folder. Clicking the toolbar button opens `/submit?url=<current tab>` in a popup window. That window runs the same dedup check, auto-populate, and review/edit step as the website, and nothing posts until you confirm. It uses your normal web session. To point it at a non-local deployment, change the site URL in the extension's Options page.
+`extension/` is an unpacked Chrome/Edge MV3 extension. To install it, open `chrome://extensions`, turn on Developer mode, click **Load unpacked**, and select the `extension/` folder.
+
+On any approved store's product page, click the toolbar button. A popup opens the site's **Post a deal** page for that link. The popup is the website itself, so it uses your normal ShareDeals session; if you're signed out it shows the sign-in page first, then continues. Duplicate checks and review and edit all work as on the site, and nothing is posted until you confirm.
+
+**Auto-fill:** the extension copies the product details from the page as you see it (meta tags, JSON-LD, Amazon's price box and breadcrumbs, MRP labels, and the price fields of embedded app state; typically 10–40 KB) and hands them to the popup. The server reads that copy with the same extractor it uses for fetched pages, so auto-fill works even when a store blocks requests from servers. The server only fetches the page itself to fill in anything missing.
+
+The extension posts to `https://sharedeals.in` by default; change this on its Options page (for example `http://localhost:3000` for development). Handing the page details to the popup needs the site's address in `host_permissions` in `extension/manifest.json`. sharedeals.in, `*.up.railway.app` and localhost are already listed. For any other address the extension still works, but the server has to fetch the page itself.
 
 ## Not built: native iOS/Android apps (PRD Phase 4)
 

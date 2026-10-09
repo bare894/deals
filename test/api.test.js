@@ -29,6 +29,7 @@ before(async () => {
     db,
     publicDir: path.join(root, 'public'),
     rateLimits: false,
+    approvedStores: null, // the suite posts from stand-in shops; the store allowlist has its own test
     resolveUrl: async (u) => u,
     scraper: async () => ({ ok: true, reason: null, fields: { title: 'Scraped Title', imageUrl: 'https://cdn.x.com/i.jpg', price: 10, fullPrice: 20, store: 'Shop' } }),
   });
@@ -100,6 +101,12 @@ test('end-to-end: auth, submit, dedup, vote, comment, bookmark, moderation', asy
     const pre = await poster.post('/api/deals/prefill', { url: 'https://shop.com/p/1?utm_source=x' });
     assert.equal(pre.status, 200);
     assert.equal(pre.data.fields.title, 'Scraped Title');
+    // Browser extension: the page snapshot is read first; the server only fetches to fill gaps (here: image).
+    const snap = '<meta property="og:title" content="Snapshot Title"><meta property="product:price:amount" content="499"><span>M.R.P.: ₹999</span>';
+    const fromExt = await poster.post('/api/deals/prefill', { url: 'https://shop.com/p/ext', html: snap });
+    assert.equal(fromExt.status, 200);
+    assert.deepEqual([fromExt.data.fields.title, fromExt.data.fields.price, fromExt.data.fields.fullPrice], ['Snapshot Title', 499, 999]);
+    assert.equal(fromExt.data.fields.imageUrl, 'https://cdn.x.com/i.jpg'); // gap filled from the fetched page
     const r = await poster.post('/api/deals', dealBody('https://shop.com/p/1?utm_source=x'));
     assert.equal(r.status, 200, JSON.stringify(r.data));
     dealId = r.data.deal.id;

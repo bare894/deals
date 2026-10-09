@@ -1,5 +1,17 @@
 import { HttpError, str, toCents } from '../http.js';
-import { canonicalizeUrl, hashUrl, parseDealUrl, registrableDomain } from '../canonicalize.js';
+import { canonicalizeUrl, hashUrl, isShortener, parseDealUrl, registrableDomain } from '../canonicalize.js';
+
+// The only stores deals can be posted from (registrable domain → name shown to users).
+// Subdomains count (dl.flipkart.com, m.myntra.com); short links count if they lead here.
+export const APPROVED_STORES = {
+  'amazon.in': 'Amazon', 'flipkart.com': 'Flipkart', 'meesho.com': 'Meesho', 'snapdeal.com': 'Snapdeal',
+  'myntra.com': 'Myntra', 'tatacliq.com': 'Tata CLiQ', 'ajio.com': 'AJIO', 'jiomart.com': 'JioMart',
+  'croma.com': 'Croma', 'nykaa.com': 'Nykaa',
+};
+
+function notApproved(approvedStores) {
+  return new HttpError(400, `Deals can only be posted from ${Object.values(approvedStores).join(', ')}.`, { notApprovedStore: true });
+}
 
 export const ROLE_RANK = { user: 0, moderator: 1, admin: 2 };
 export const isMod = (user) => Boolean(user && ROLE_RANK[user.role] >= ROLE_RANK.moderator);
@@ -9,16 +21,23 @@ export function publicUser(u) {
   return u ? { id: u.id, handle: u.handle, email: u.email, role: u.role, status: u.status } : null;
 }
 
-/** Validate + canonicalize a pasted product link. storeKey identifies the store (e.g. flipkart.com). */
-export async function resolveLink(rawUrl, resolveUrl) {
+/**
+ * Validate + canonicalize a pasted product link. storeKey identifies the store (e.g. flipkart.com).
+ * Links outside `approvedStores` are refused before anything is fetched; short links are
+ * followed first and judged by where they lead.
+ */
+export async function resolveLink(rawUrl, resolveUrl, approvedStores = APPROVED_STORES) {
   let url;
   try {
     url = parseDealUrl(rawUrl);
   } catch (err) {
     throw new HttpError(400, err.message);
   }
+  const approved = (u) => !approvedStores || Object.hasOwn(approvedStores, registrableDomain(new URL(u).hostname));
+  if (!approved(url) && !isShortener(url)) throw notApproved(approvedStores);
   const resolved = await resolveUrl(url);
   const canonicalUrl = canonicalizeUrl(resolved);
+  if (!approved(canonicalUrl)) throw notApproved(approvedStores);
   return { url, resolved, canonicalUrl, hash: hashUrl(canonicalUrl), storeKey: registrableDomain(new URL(canonicalUrl).hostname) };
 }
 

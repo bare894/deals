@@ -5,11 +5,11 @@ import { HttpError } from '../http.js';
 import { duplicateLinkError } from '../repo.js';
 import { resolveLink, validateOfferBody } from './common.js';
 
-export function registerOfferRoutes({ route, db, repo, rateLimit, resolveUrl }) {
+export function registerOfferRoutes({ route, db, repo, rateLimit, resolveUrl, approvedStores }) {
   route('POST', '/api/deals/:id/offers', { auth: true, active: true }, async ({ params, body, user }) => {
     rateLimit('submit', user.id);
     const dealId = Number(params.id);
-    const link = await resolveLink(body.url, resolveUrl);
+    const link = await resolveLink(body.url, resolveUrl, approvedStores);
     const offer = validateOfferBody(body);
     const dup = await repo.findActiveOfferByHash(link.hash);
     if (dup) throw duplicateLinkError(dup);

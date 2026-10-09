@@ -69,6 +69,24 @@ function toast(message, kind = '') {
   setTimeout(() => el.remove(), 3200);
 }
 
+// ------------------------------------------------------------ browser extension hand-off
+// The extension opens /submit?url=…&via=extension and posts a snapshot of the product page
+// (as the user sees it) into this window. Kept at module level so it survives the sign-in
+// detour that /submit may take first.
+
+let extensionSnapshot = null;
+const snapshotWaiters = [];
+window.addEventListener('message', (e) => {
+  if (e.source !== window || e.origin !== location.origin || e.data?.type !== 'sharedeals:snapshot') return;
+  extensionSnapshot = { url: String(e.data.url || ''), html: String(e.data.html || '') };
+  for (const done of snapshotWaiters.splice(0)) done();
+});
+/** The snapshot for `url`, waiting briefly for it to arrive; null if there isn't one. */
+async function snapshotFor(url, waitMs = 4000) {
+  if (!extensionSnapshot) await new Promise((done) => (snapshotWaiters.push(done), setTimeout(done, waitMs)));
+  return extensionSnapshot && extensionSnapshot.url === url ? extensionSnapshot.html : null;
+}
+
 function goLogin() {
   navigate(`/login?next=${encodeURIComponent(location.pathname + location.search)}`);
 }
@@ -726,7 +744,8 @@ async function submitPage({ query, alive }) {
       ${error}
       <div class="field"><label for="u-url">Paste the deal link</label>
         <input id="u-url" name="url" type="url" required placeholder="https://www.flipkart.com/… or a Myntra, Amazon, AJIO, Nykaa, Meesho link" value="${value}" autofocus>
-        <span class="hint">We'll check whether this product is already on ShareDeals and try to fill in the title, image, price, and store for you.</span></div>
+        <span class="hint">We'll check whether this product is already on ShareDeals and try to fill in the title, image, price, and store for you.</span>
+        ${state.stores?.length ? html`<span class="hint">Accepted stores: ${state.stores.join(', ')}.</span>` : ''}</div>
       <button class="btn btn-primary" id="url-btn">Continue</button>
     </form>`);
     $('#url-form').addEventListener('submit', (e) => {
@@ -742,7 +761,9 @@ async function submitPage({ query, alive }) {
       btn.textContent = 'Fetching details…';
     }
     try {
-      const r = await api('/api/deals/prefill', { method: 'POST', body: { url } });
+      const html = query.get('via') === 'extension' && url === initialUrl ? await snapshotFor(url) : null;
+      if (!alive()) return;
+      const r = await api('/api/deals/prefill', { method: 'POST', body: { url, ...(html ? { html } : {}) } });
       if (!alive()) return;
       Object.assign(s, { url: r.url, fields: r.fields || {}, ok: r.ok, reason: r.reason, matches: r.matches || [], draft: null });
       if (s.matches.length) showMatches();
@@ -1319,6 +1340,7 @@ async function adminAudit({ shell, query, alive }) {
     state.user = meta.user;
     state.categories = meta.categories;
     state.oauth = meta.oauth || [];
+    state.stores = meta.stores || [];
     state.demo = meta.demo;
   } catch {
     /* render signed-out */
