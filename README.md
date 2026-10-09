@@ -97,5 +97,6 @@ test/                node:test suites
 
 1. Create a project with a **PostgreSQL** service and a service for this repo. In the app service's variables, reference the database: `DATABASE_URL=${{Postgres.DATABASE_URL}}`.
 2. Set `NODE_ENV=production`, `SEED=0`, `PUBLIC_URL=https://sharedeals.in`, and the optional social sign-in keys.
-3. The build runs `npm install` and the start command is `npm start` (Railway detects both). Tables are created on first boot.
+3. The build runs `npm install` and the start command is `npm start` (Railway detects both). Tables are created on first boot. To create them by hand instead, run `npm run migrate`. It is safe to run any number of times and never deletes data.
+   - **Data wiped on every deploy?** Then the app isn't connected to the Postgres service. Without `DATABASE_URL` it would store data on the container's disk, which each deploy replaces. The server now refuses to start on Railway without `DATABASE_URL`, so this fails loudly instead of losing data.
 4. Add the custom domain `sharedeals.in` in the service's Networking settings, then create the DNS record Railway shows you.

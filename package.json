@@ -12,7 +12,8 @@
     "dev": "node --disable-warning=ExperimentalWarning --watch server.js",
     "seed": "node --disable-warning=ExperimentalWarning src/seed.js --reset",
     "test": "node --disable-warning=ExperimentalWarning --test \"test/*.test.js\"",
-    "make-admin": "node --disable-warning=ExperimentalWarning src/make-admin.js"
+    "make-admin": "node --disable-warning=ExperimentalWarning src/make-admin.js",
+    "migrate": "node --disable-warning=ExperimentalWarning src/migrate.js"
   },
   "dependencies": {
     "pg": "^8.23.1"

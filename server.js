@@ -8,6 +8,16 @@ import { seed } from './src/seed.js';
 const root = path.dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT || 3000);
 // Production: DATABASE_URL (Railway Postgres). Local dev: embedded Postgres (PGlite) under data/.
+// On a host, the local fallback would live on the container's disk, which every deploy replaces,
+// silently wiping all data. Refuse to start instead.
+const onHost = process.env.NODE_ENV === 'production' || Boolean(process.env.RAILWAY_ENVIRONMENT_NAME || process.env.RAILWAY_ENVIRONMENT);
+if (onHost && !process.env.DATABASE_URL) {
+  console.error(
+    'DATABASE_URL is not set. Without it, data would be stored on this container\'s disk and lost on every deploy.\n' +
+      'On Railway: add a PostgreSQL service, then set DATABASE_URL=${{Postgres.DATABASE_URL}} on this service.',
+  );
+  process.exit(1);
+}
 const dbTarget = process.env.DATABASE_URL || path.join(root, 'data', 'pglite');
 
 const db = await openDb(dbTarget);
