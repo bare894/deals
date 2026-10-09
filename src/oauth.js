@@ -6,11 +6,17 @@
 //   GET /auth/:provider/callback          → exchange code, find/link/create the user, start a session
 //
 // Failures redirect to /login?error=<code> (codes, never free text, so links can't inject messages).
-import { createHmac, randomBytes, randomInt } from 'node:crypto';
+import { createHash, createHmac, randomBytes, randomInt } from 'node:crypto';
 import { createSession, parseCookies, sessionCookie } from './auth.js';
-import { HttpError, clientIp } from './http.js';
+import { HttpError, clientIp, escapeHtml } from './http.js';
 
 const STATE_COOKIE = 'oauth_state';
+// The Android app's URL scheme (mobile/android). Google and Facebook refuse sign-in inside an
+// app's WebView, so the app runs the flow in a Chrome tab (start?app=1&challenge=…) and we
+// hand the result back through this scheme as a one-time code (see /auth/app/finish).
+export const APP_SCHEME = 'in.sharedeals.app';
+const APP_CODE_TTL_MS = 2 * 60_000;
+const sha256url = (s) => createHash('sha256').update(s).digest('base64url');
 const FB_GRAPH = 'https://graph.facebook.com/v21.0';
 
 const PROVIDERS = {
@@ -107,13 +113,44 @@ export function createOAuth({ db, config, secureCookies, baseUrl, rateLimit, fet
     });
   }
 
+  /** Back to the app via its URL scheme. A page (not a bare 302), so there's a button if the tab doesn't switch by itself. */
+  function toApp(res, send, params, cookies) {
+    const target = `${APP_SCHEME}://auth?${new URLSearchParams(params)}`;
+    const t = escapeHtml(target);
+    const body = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="refresh" content="0;url=${t}"><title>Back to ShareDeals</title>
+<body style="font:16px system-ui,sans-serif;text-align:center;padding:48px 16px">
+<p>${params.error ? 'Sign-in did not complete.' : 'Signed in.'}</p>
+<p><a href="${t}" style="display:inline-block;padding:12px 20px;border-radius:10px;background:#ec0276;color:#fff;text-decoration:none;font-weight:600">Return to the ShareDeals app</a></p></body>`;
+    return send(res, 200, body, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', ...(cookies ? { 'set-cookie': cookies } : {}) });
+  }
+
+  /** The app redeems the one-time code (plus its verifier) inside its WebView, which then gets the session cookie. */
+  async function finishAppSignIn(req, res, url, send) {
+    const code = url.searchParams.get('code') || '';
+    const verifier = url.searchParams.get('verifier') || '';
+    const fail = (e) => send(res, 302, '', { location: `/login?error=${e}` });
+    const row = code && (await db.get('DELETE FROM app_login_codes WHERE code_hash = ? RETURNING user_id, challenge, next, expires_at', sha256url(code)));
+    if (!row || row.expires_at < Date.now() || !verifier || sha256url(verifier) !== row.challenge) return fail('expired');
+    const user = await db.get('SELECT id, status FROM users WHERE id = ?', row.user_id);
+    if (!user || user.status === 'banned' || user.status === 'deleted') return fail('banned');
+    const { token, maxAge } = await createSession(db, user.id);
+    return send(res, 302, '', { location: safeNext(row.next), 'set-cookie': sessionCookie(token, maxAge, secureCookies) });
+  }
+
   /** Handles /auth/* requests. Returns false when the path isn't an OAuth route. */
   async function handle(req, res, url, sendRaw) {
     const send = (...args) => (sendRaw(...args), true);
+    if (url.pathname === '/auth/app/finish') return finishAppSignIn(req, res, url, send);
     const m = url.pathname.match(/^\/auth\/([a-z]+)\/(start|callback)$/);
     if (!m) return false;
     const [, provider, step] = m;
-    const fail = (code, cookies) => send(res, 302, '', { location: `/login?error=${code}`, ...(cookies ? { 'set-cookie': cookies } : {}) });
+    // Only the app flow carries a challenge (in the state cookie); its failures go back to the app.
+    let appChallenge = null;
+    const fail = (code, cookies) =>
+      appChallenge
+        ? toApp(res, send, { error: code }, cookies)
+        : send(res, 302, '', { location: `/login?error=${code}`, ...(cookies ? { 'set-cookie': cookies } : {}) });
     if (!enabled.includes(provider)) return fail('unavailable');
     const { clientId, clientSecret } = config[provider];
     const redirectUri = `${baseUrl(req)}/auth/${provider}/callback`;
@@ -121,13 +158,17 @@ export function createOAuth({ db, config, secureCookies, baseUrl, rateLimit, fet
     if (step === 'start') {
       const state = randomBytes(24).toString('base64url');
       const next = Buffer.from(safeNext(url.searchParams.get('next'))).toString('base64url');
+      const challenge = url.searchParams.get('app') === '1' ? String(url.searchParams.get('challenge') || '') : '';
+      if (challenge && !/^[A-Za-z0-9_-]{43}$/.test(challenge)) return fail('failed');
       const q = new URLSearchParams({ client_id: clientId, redirect_uri: redirectUri, response_type: 'code', state, ...PROVIDERS[provider].authorizeParams });
-      return send(res, 302, '', { location: `${PROVIDERS[provider].authorizeUrl}?${q}`, 'set-cookie': [stateCookie(`${provider}.${state}.${next}`, 600)] });
+      const cookie = [provider, state, next, challenge].filter(Boolean).join('.');
+      return send(res, 302, '', { location: `${PROVIDERS[provider].authorizeUrl}?${q}`, 'set-cookie': [stateCookie(cookie, 600)] });
     }
 
     // callback
     const clear = stateCookie('', 0);
-    const [cProvider, cState, cNext] = String(parseCookies(req.headers.cookie)[STATE_COOKIE] || '').split('.');
+    const [cProvider, cState, cNext, cChallenge] = String(parseCookies(req.headers.cookie)[STATE_COOKIE] || '').split('.');
+    appChallenge = cChallenge || null;
     const state = url.searchParams.get('state');
     if (!state || cProvider !== provider || cState !== state) return fail('expired', [clear]);
     if (url.searchParams.get('error') || !url.searchParams.get('code')) return fail('cancelled', [clear]);
@@ -136,9 +177,19 @@ export function createOAuth({ db, config, secureCookies, baseUrl, rateLimit, fet
       const profile = await PROVIDERS[provider].profile({ code: url.searchParams.get('code'), clientId, clientSecret, redirectUri }, fetchJson);
       if (!profile.subject) throw new Error('OAuth profile has no subject');
       const user = await resolveUser(provider, profile);
-      if (user.status === 'banned') return fail('banned', [clear]);
-      const { token, maxAge } = await createSession(db, user.id);
+      if (user.status === 'banned' || user.status === 'deleted') return fail('banned', [clear]);
       const next = safeNext(Buffer.from(cNext || '', 'base64url').toString());
+      if (appChallenge) {
+        // This tab's cookies aren't the app's: hand over a one-time code instead of a session.
+        const code = randomBytes(32).toString('base64url');
+        await db.run(
+          'INSERT INTO app_login_codes (code_hash, user_id, challenge, next, expires_at) VALUES (?, ?, ?, ?, ?)',
+          sha256url(code), user.id, appChallenge, next, Date.now() + APP_CODE_TTL_MS,
+        );
+        await db.run('DELETE FROM app_login_codes WHERE expires_at < ?', Date.now());
+        return toApp(res, send, { code }, [clear]);
+      }
+      const { token, maxAge } = await createSession(db, user.id);
       return send(res, 302, '', { location: next, 'set-cookie': [clear, sessionCookie(token, maxAge, secureCookies)] });
     } catch (err) {
       if (err instanceof HttpError) return fail(err.status === 429 ? 'rate_limited' : err.message, [clear]);

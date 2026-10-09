@@ -6,12 +6,41 @@
 // Auto-fill: stores often block requests from servers, so the extension also copies the product
 // details from the page as the user sees it and hands them to the popup. The server reads that
 // copy with the same extractor it uses for fetched pages, and only fetches to fill gaps.
-const DEFAULT_BASE = 'https://sharedeals.in';
+// Sites tried in order when no site is set on the Options page: the first one whose /api/health
+// answers ok is used. www.sharedeals.in is the real address; the Railway one keeps the extension
+// working while the custom domain is down. (The bare sharedeals.in isn't listed: it goes through
+// GoDaddy forwarding, which only redirects the home page, so /submit there is a 404.)
+const SITES = ['https://www.sharedeals.in', 'https://deals-production-1ecf.up.railway.app'];
 const POPUP = { type: 'popup', width: 920, height: 860 };
 
+async function isUp(base) {
+  try {
+    const res = await fetch(`${base}/api/health`, { signal: AbortSignal.timeout(4000), cache: 'no-store' });
+    return res.ok && (await res.json()).ok === true;
+  } catch {
+    return false;
+  }
+}
+
+/** The site to post to: the one set on the Options page, else the first healthy one (remembered for 10 minutes). */
+async function siteBase() {
+  const { baseUrl } = await chrome.storage.sync.get('baseUrl');
+  const saved = (baseUrl || '').replace(/\/$/, '');
+  // A saved sharedeals.in address (from older versions) means "the real site": use the automatic choice.
+  if (saved && !/^https?:\/\/(www\.)?sharedeals\.in$/i.test(saved)) return saved;
+  const { picked } = await chrome.storage.session.get('picked');
+  if (picked && Date.now() - picked.at < 10 * 60_000) return picked.base;
+  for (const base of SITES) {
+    if (await isUp(base)) {
+      await chrome.storage.session.set({ picked: { base, at: Date.now() } });
+      return base;
+    }
+  }
+  return SITES[SITES.length - 1]; // all down: open the last one so the user at least sees what's wrong
+}
+
 chrome.action.onClicked.addListener(async (tab) => {
-  const { baseUrl = DEFAULT_BASE } = await chrome.storage.sync.get('baseUrl');
-  const base = baseUrl.replace(/\/$/, '');
+  const base = await siteBase();
   const pageUrl = tab?.url || '';
   if (!/^https?:\/\//.test(pageUrl) || pageUrl.startsWith(base)) {
     await chrome.windows.create({ ...POPUP, url: `${base}/submit` });

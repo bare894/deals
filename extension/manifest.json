@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ShareDeals \u2014 Post this deal",
-  "version": "1.1.1",
+  "version": "1.1.3",
   "description": "Post the product you're viewing on Amazon, Flipkart, Myntra and other approved stores to ShareDeals.in, with the details filled in.",
   "action": {
     "default_title": "Post this page to ShareDeals",

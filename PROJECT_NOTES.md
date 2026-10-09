@@ -8,7 +8,7 @@ How this project is set up and why. It covers the decisions, how things are wire
 
 ## 1. What it is
 
-**ShareDeals.in** (domain: `sharedeals.in`) is a community deals site for **India only**. It's like Slickdeals: users post deals from Indian stores, and the community votes, comments, saves and shares them. Moderators and admins keep it clean from **Admin Mode** (`/admin`).
+**ShareDeals.in** (served at `https://www.sharedeals.in`) is a community deals site for **India only**. It's like Slickdeals: users post deals from Indian stores, and the community votes, comments, saves and shares them. Moderators and admins keep it clean from **Admin Mode** (`/admin`).
 
 - **Prices:** shown in ₹ with Indian grouping (₹1,29,999). The full price is called **MRP**. Prices are stored as integer paise.
 - **One deal per product:** a deal is a *product* ("Google Pixel 10a 256 GB"). Each store's link is an **offer** on that deal, so a deal can list Amazon, Flipkart and Croma side by side. The headline price is the cheapest active offer.
@@ -79,19 +79,22 @@ npm run make-admin -- --email you@example.com --handle yourname [--password '…
 | `NODE_ENV` | `production` | Secure cookies, static caching, hides the demo hint, blocks `npm run seed` |
 | `SEED` | `0` | Never load demo accounts or fake deals into production |
 | `TRUST_PROXY` | `1` | Read the visitor IP from Railway's proxy (rate limits) |
-| `PUBLIC_URL` | `https://sharedeals.in` | Absolute links in share previews and OAuth redirect URIs |
+| `PUBLIC_URL` | `https://www.sharedeals.in` | Absolute links in share previews and OAuth redirect URIs |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | from Google Cloud | Optional; shows "Continue with Google" |
 | `FACEBOOK_APP_ID` / `FACEBOOK_APP_SECRET` | from Meta for Developers | Optional; shows "Continue with Facebook" |
 | `PG_POOL_MAX` | default `10` | Pool size |
 
 3. **Build and start:** Railway detects `npm install` and `npm start`. Tables are created on first boot.
 4. **Health check:** set the Healthcheck Path to `/api/health`. It returns 503 if the database is unreachable, so a broken deploy never takes traffic.
-5. **Domain:** add `sharedeals.in` under the app service's Networking settings and create the DNS record Railway shows.
+5. **Domain:** the site lives at **`www.sharedeals.in`**: a CNAME to Railway (`jjk6jv9e.up.railway.app`), DNS at GoDaddy.
+   - The bare `sharedeals.in` points at **GoDaddy domain forwarding**, which redirects only the home page to www. Any other path (`/submit`, `/deals/5` …) gets GoDaddy's "HTTP Status: 404 (not found)" page.
+   - So `PUBLIC_URL`, the OAuth redirect URIs, the extension and any shared links must all use `https://www.sharedeals.in`.
+   - To make the bare domain work for every path, move DNS to a provider with CNAME flattening (for example Cloudflare, free) and point `sharedeals.in` at Railway as well.
 6. **First admin:** open a shell on the app service (`railway ssh`) and run `npm run make-admin -- --email … --handle …`. It prints a random password once. If the email matches your Google account, "Continue with Google" signs into the same admin account.
 
 **History: data was wiped on every deploy.** The app had no `DATABASE_URL`, so it fell back to PGlite on the container's disk, which Railway replaces on each deploy. The server now **refuses to start** on Railway, or with `NODE_ENV=production`, without `DATABASE_URL`.
 
-**To check the deployment,** open `https://sharedeals.in/api/health`:
+**To check the deployment,** open `https://www.sharedeals.in/api/health`:
 - Everyone sees `{"ok":true,"database":"postgres",…}`. If it says `pglite`, data won't survive a deploy.
 - Signed in as an admin, you also see the database name and version, schema version, row counts, which variables are set (never their values), and the deployed commit.
 
@@ -143,10 +146,10 @@ npm run make-admin -- --email you@example.com --handle yourname [--password '…
   - **Going live:** the Google consent screen must be set to "In production", and the Facebook app must be **Live**, with a privacy-policy URL and a data-deletion URL.
 - **Rate limits** live in memory, per process. They're keyed by user, or by IP for sign-in and registration. With more than one replica, each replica counts separately.
 
-## 9. Browser extension (`extension/`, v1.1.1)
+## 9. Browser extension (`extension/`, v1.1.3)
 
 - **Install:** `chrome://extensions` → Developer mode → **Load unpacked** → `extension/`.
-- **Default site:** `https://sharedeals.in` (changeable on the Options page).
+- **Which site:** with nothing set on the Options page, the extension checks `/api/health` on `https://www.sharedeals.in`, then `https://deals-production-1ecf.up.railway.app`, uses the first healthy one, and remembers it for 10 minutes. A saved sharedeals.in address also means automatic. Any other saved address, such as `http://localhost:3000`, is always used as-is.
 - **Flow:** the toolbar click opens a popup at `/submit?url=<tab>&via=extension`.
   - The popup *is* the website, so it uses the normal session. If you're signed out, the sign-in page appears and then returns with the link kept.
   - Duplicate checks, review and edit all work as on the site. Nothing posts until the user confirms.
@@ -201,6 +204,25 @@ npm run make-admin -- --email you@example.com --handle yourname [--password '…
 - **Expected-error savepoints:** use `db.savepoint()` around statements that may hit an expected unique violation inside a transaction. In Postgres, an error otherwise aborts the whole transaction.
 - **Concurrency:** votes, adding offers, offer status changes, restores and merges lock the affected deal row (`FOR UPDATE`; merges lock both rows in ID order).
 
+## 12a. Android app (`mobile/`)
+
+- **What it is:** a Capacitor 8 shell, app ID `in.sharedeals.app`. It loads the live site (`server.url` in `mobile/capacitor.config.json`, currently the Railway address until `www` works) and adds native Android features through Capacitor's bridge. The site calls the bridge directly via `window.Capacitor.nativePromise` / `nativeCallback`, with no Capacitor JS bundled; search `native` in `public/app.js`.
+- **Plugins:** App (back button, `appUrlOpen` / `getLaunchUrl`), Share (share sheet), Browser (Chrome tab for sign-in).
+- **Google/Facebook sign-in:** both refuse to sign in inside WebViews. The app opens `/auth/<provider>/start?app=1&challenge=<sha256(verifier)>` in a Chrome tab.
+  - The callback stores a **one-time code** (hashed, expires after 2 minutes, migration 2 `app_login_codes`) and returns `in.sharedeals.app://auth?code=…`.
+  - The app then loads `/auth/app/finish?code=…&verifier=…` in its WebView, which sets the session cookie.
+  - The verifier never leaves the app, so another app that grabs the code can't redeem it.
+- **Account deletion** (a Play requirement): `DELETE /api/me` (confirm by typing your username), the Account page, and the public `/delete-account` page.
+  - It anonymizes the user row (`status = 'deleted'`) and deletes their email, sign-ins, sessions, comments, votes, saved deals, views and reports. Deal scores are adjusted for the removed votes.
+  - Deals and offers they posted stay up. Admins must be demoted first.
+- **Legal pages:** `/privacy` and `/terms` (`CONTACT_EMAIL` in `public/app.js` is `support@sharedeals.in`; make sure that mailbox exists). Have a lawyer review both before launch.
+- **App Links:** `/.well-known/assetlinks.json` is built from `ANDROID_CERT_SHA256`. The manifest verifies `www.sharedeals.in` and the Railway host for paths starting `/deals`.
+- **Edge-to-edge:** the header pads by `env(safe-area-inset-top)`; the tab bar already used the bottom inset.
+- **Assets:** launcher icons (adaptive, round, legacy and monochrome), splash screens, and Play listing images in `mobile/store/`.
+- **Build, test and publish steps:** [mobile/README.md](mobile/README.md).
+- **Not yet built or run on a device:** this Mac has no Java, Android SDK or Xcode. Web-side behaviour was tested in headless Chrome with a stand-in for the bridge (share, back button, deep links, sign-in hand-off, store links, account page, launch link handled once), and the server pieces have tests.
+- **iOS** is deferred. It needs Sign in with Apple, Universal Links and user blocking; see the end of mobile/README.md.
+
 ## 13. Known issues and backlog
 
 - **Failing test:** `deal pages render escaped Open Graph tags`. The test expects `₹19.99 (MRP …) on Shop`, but the code renders `₹19.99 on Shop (MRP …)`. Fix the test or the wording.
@@ -208,6 +230,8 @@ npm run make-admin -- --email you@example.com --handle yourname [--password '…
 - **No `package-lock.json`:** see §2.
 - **Unfinished launch checklist:** privacy policy page (DPDP Act 2023; must mention GA cookies), data-deletion page (needed for Facebook), and an affiliate disclosure if affiliate links are used.
 - **Not yet built:** password reset and email verification.
+- **`mobile/` has no `package-lock.json`** (installed with the same workaround as §2); run `npm install` in `mobile/` on a normal network and commit it.
+- **Before the Android production release:** switch `server.url` to `www`, set `ANDROID_CERT_SHA256`, and get the privacy policy and terms reviewed.
 - **Not yet built:** tracking Google and Facebook sign-ins as GA events.
 - **Rate limits** are in memory, per replica (§8).
 - **Dev environment quirk:** on the original development machine, Node couldn't reach the internet (curl and Python could). npm installs were done by a script that downloads registry tarballs and checks their integrity. This doesn't affect Railway.

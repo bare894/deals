@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ShareDeals brand palette: pink #EC0276 and navy #010A5E, as in public/styles.css. -->
+<resources>
+    <color name="colorPrimary">#EC0276</color>
+    <color name="colorPrimaryDark">#010A5E</color>
+    <color name="colorAccent">#EC0276</color>
+    <color name="splashBackground">#FFFFFF</color>
+</resources>

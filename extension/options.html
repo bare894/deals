@@ -13,8 +13,8 @@
   <body>
     <h1><img src="logo.png" alt="ShareDeals.in" height="48"></h1>
     <label for="base">ShareDeals site URL</label>
-    <input id="base" type="url" placeholder="https://sharedeals.in">
-    <p class="hint">Leave as <code>https://sharedeals.in</code>. For local development use <code>http://localhost:3000</code>; a Railway preview address (<code>…up.railway.app</code>) also works.</p>
+    <input id="base" type="url" placeholder="Automatic">
+    <p class="hint">Leave empty to use <code>https://www.sharedeals.in</code>, falling back to <code>https://deals-production-1ecf.up.railway.app</code> when it's down. Or enter an address to always use it, for example <code>http://localhost:3000</code> for development.</p>
     <button id="save">Save</button> <span id="status"></span>
     <script src="options.js"></script>
   </body>

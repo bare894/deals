@@ -60,7 +60,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .container { max-width: 1240px; margin: 0 auto; padding: 20px 16px 96px; outline: none; }
 
 /* ---------- top bar ---------- */
-.topbar { position: sticky; top: 0; z-index: 20; background: var(--surface); border-bottom: 1px solid var(--border); }
+.topbar { position: sticky; top: 0; z-index: 20; background: var(--surface); border-bottom: 1px solid var(--border); padding-top: env(safe-area-inset-top); }
 .topbar-inner { max-width: 1240px; margin: 0 auto; padding: 10px 16px; display: flex; align-items: center; gap: 16px; }
 .logo { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 20px; text-decoration: none; letter-spacing: -0.02em; white-space: nowrap; }
 .logo picture { display: flex; }
@@ -296,3 +296,11 @@ td.actions-cell .btn + .btn { margin-left: 6px; }
 .match-meta { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
 .badge.match-high { background: var(--accent-soft); color: var(--accent-text); border-color: var(--accent); }
 .match-footer { border-top: 1px solid var(--border); padding-top: 14px; display: flex; justify-content: flex-end; }
+
+/* ---------- account & legal pages ---------- */
+.legal { max-width: 760px; margin: 0 auto; line-height: 1.65; }
+.legal h2 { font-size: 18px; margin: 24px 0 8px; }
+.legal li { margin: 4px 0; }
+a.avatar { text-decoration: none; }
+/* Inside the Android app the system shows its own back button and share sheet. */
+.in-app .skip-link { display: none; }

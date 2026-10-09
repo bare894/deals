@@ -32,7 +32,7 @@ export async function userForToken(db, token) {
       WHERE s.token = ? AND s.expires_at > ?`,
     token, Date.now(),
   );
-  if (!row || row.status === 'banned') return null;
+  if (!row || row.status === 'banned' || row.status === 'deleted') return null;
   return { ...row };
 }
 

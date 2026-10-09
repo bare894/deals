@@ -1,0 +1,17 @@
+{
+  "appId": "in.sharedeals.app",
+  "appName": "ShareDeals",
+  "webDir": "www",
+  "server": {
+    "url": "https://deals-production-1ecf.up.railway.app",
+    "androidScheme": "https",
+    "errorPath": "offline.html",
+    "allowNavigation": [
+      "www.sharedeals.in",
+      "deals-production-1ecf.up.railway.app"
+    ]
+  },
+  "android": {
+    "backgroundColor": "#ffffff"
+  }
+}

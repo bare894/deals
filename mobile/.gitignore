@@ -1,0 +1,5 @@
+node_modules/
+# Release signing: never commit the upload keystore or its passwords.
+*.jks
+*.keystore
+keystore.properties

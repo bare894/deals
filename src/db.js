@@ -171,9 +171,25 @@ CREATE TABLE moderation_actions (
 );
 CREATE INDEX moderation_actions_actor ON moderation_actions(actor_id, created_at DESC);
 `,
+  // 2: Android app sign-in codes, and account deletion
+  `
+-- One-time codes that hand a Google/Facebook sign-in from the system browser back to the app.
+-- Only a hash of the code is stored; redeeming also needs the verifier behind challenge (PKCE-style).
+CREATE TABLE app_login_codes (
+  code_hash  TEXT PRIMARY KEY,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  challenge  TEXT NOT NULL,
+  next       TEXT NOT NULL DEFAULT '/',
+  expires_at BIGINT NOT NULL
+);
+
+-- Deleted accounts keep an anonymized row so the deals they posted stay attributed to someone.
+ALTER TABLE users DROP CONSTRAINT users_status_check;
+ALTER TABLE users ADD CONSTRAINT users_status_check CHECK (status IN ('active','suspended','banned','deleted'));
+`,
 ];
 
-const TABLES = ['moderation_actions', 'reports', 'views', 'bookmarks', 'comments', 'votes', 'offers', 'deals', 'categories', 'sessions', 'oauth_identities', 'users', 'schema_migrations'];
+const TABLES = ['app_login_codes', 'moderation_actions', 'reports', 'views', 'bookmarks', 'comments', 'votes', 'offers', 'deals', 'categories', 'sessions', 'oauth_identities', 'users', 'schema_migrations'];
 const INT8 = 20;
 
 /** `?` → `$n`, skipping quoted strings/identifiers. Cached: the SQL texts are a fixed set. */

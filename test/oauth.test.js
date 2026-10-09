@@ -117,3 +117,50 @@ test('unconfigured providers are unavailable; password login still refuses socia
   });
   assert.equal(login.status, 401);
 });
+
+test('Android app sign-in: one-time code via the app scheme, redeemable once with the verifier', async () => {
+  const { createHash, randomBytes } = await import('node:crypto');
+  const verifier = randomBytes(32).toString('base64url');
+  const challenge = createHash('sha256').update(verifier).digest('base64url');
+  profiles = { google: { sub: 'g-app', email: 'app.user@gmail.com', email_verified: true, name: 'App User' } };
+
+  const start = await fetch(`${base}/auth/google/start?next=%2Fsaved&app=1&challenge=${challenge}`, { redirect: 'manual' });
+  const to = new URL(start.headers.get('location'));
+  const stateCookie = start.headers.get('set-cookie').split(';')[0];
+  const cb = await fetch(`${base}/auth/google/callback?code=abc&state=${to.searchParams.get('state')}`, { redirect: 'manual', headers: { cookie: stateCookie } });
+  assert.equal(cb.status, 200);
+  assert.ok(!cb.headers.getSetCookie().some((c) => c.startsWith('sid=') && !c.startsWith('sid=;')), 'no session in the browser tab');
+  const page = await cb.text();
+  const code = page.match(/in\.sharedeals\.app:\/\/auth\?code=([\w-]+)/)?.[1];
+  assert.ok(code, 'page hands a code back to the app');
+
+  const finish = (v) => fetch(`${base}/auth/app/finish?code=${code}&verifier=${v}`, { redirect: 'manual' });
+  assert.equal((await finish('wrong-verifier')).headers.get('location'), '/login?error=expired'); // also burns the code
+  // A fresh code, redeemed properly.
+  const cb2 = await fetch(`${base}/auth/google/callback?code=abc&state=${to.searchParams.get('state')}`, { redirect: 'manual', headers: { cookie: stateCookie } });
+  const code2 = (await cb2.text()).match(/code=([\w-]+)/)[1];
+  const ok = await fetch(`${base}/auth/app/finish?code=${code2}&verifier=${verifier}`, { redirect: 'manual' });
+  assert.equal(ok.headers.get('location'), '/saved');
+  const sid = ok.headers.getSetCookie().find((c) => c.startsWith('sid='))?.split(';')[0];
+  assert.equal((await me(sid)).handle, 'app_user');
+  const again = await fetch(`${base}/auth/app/finish?code=${code2}&verifier=${verifier}`, { redirect: 'manual' });
+  assert.equal(again.headers.get('location'), '/login?error=expired', 'codes are single-use');
+
+  // Failures go back to the app, not the website's login page.
+  profiles = { facebook: { id: 'fb-app', name: 'No Email' } };
+  const s3 = await fetch(`${base}/auth/facebook/start?app=1&challenge=${challenge}`, { redirect: 'manual' });
+  const c3 = await fetch(`${base}/auth/facebook/callback?code=x&state=${new URL(s3.headers.get('location')).searchParams.get('state')}`, {
+    redirect: 'manual', headers: { cookie: s3.headers.get('set-cookie').split(';')[0] },
+  });
+  assert.match(await c3.text(), /in\.sharedeals\.app:\/\/auth\?error=no_email/);
+});
+
+test('assetlinks.json lists the app signing certificates from ANDROID_CERT_SHA256', async () => {
+  delete process.env.ANDROID_CERT_SHA256;
+  assert.deepEqual(await (await fetch(`${base}/.well-known/assetlinks.json`)).json(), []);
+  process.env.ANDROID_CERT_SHA256 = 'aa:bb:cc, DD:EE:FF';
+  const [statement] = await (await fetch(`${base}/.well-known/assetlinks.json`)).json();
+  assert.equal(statement.target.package_name, 'in.sharedeals.app');
+  assert.deepEqual(statement.target.sha256_cert_fingerprints, ['AA:BB:CC', 'DD:EE:FF']);
+  delete process.env.ANDROID_CERT_SHA256;
+});

@@ -295,6 +295,15 @@ const actions = {
   async share(btn) {
     const url = `${location.origin}/deals/${btn.dataset.id}`;
     const title = btn.dataset.title;
+    if (native) {
+      try {
+        await nativeCall('Share', 'share', { title, url, dialogTitle: 'Share this deal' });
+        track('share', { method: 'android_share', content_type: 'deal', item_id: btn.dataset.id });
+      } catch {
+        /* dismissed */
+      }
+      return;
+    }
     if (navigator.share) {
       try {
         await navigator.share({ title, url });
@@ -333,6 +342,21 @@ const actions = {
 document.addEventListener('click', (e) => {
   const tracked = e.target.closest('a[data-track="get_deal"]');
   if (tracked) track('get_deal', { deal_id: tracked.dataset.dealId, store: tracked.dataset.store, link_url: tracked.href });
+  if (native) {
+    const social = e.target.closest('a[data-provider]');
+    if (social) {
+      e.preventDefault();
+      appSignIn(social.dataset.provider, new URL(social.href).searchParams.get('next') || '/');
+      return;
+    }
+    // Store links: hand to Android, which opens the Flipkart/Amazon app if installed, else the browser.
+    const out = e.target.closest('a[target="_blank"]');
+    if (out && out.origin !== location.origin) {
+      e.preventDefault();
+      location.href = out.href;
+      return;
+    }
+  }
   const actionEl = e.target.closest('[data-action]');
   if (actionEl && actions[actionEl.dataset.action]) {
     e.preventDefault();
@@ -364,7 +388,7 @@ function renderChrome() {
       <a href="/submit" class="btn btn-primary btn-sm hide-sm">+ Post a deal</a>
       ${
         u
-          ? html`<span class="user-chip"><span class="avatar" title="${u.handle}">${u.handle[0]}</span>
+          ? html`<span class="user-chip"><a href="/account" class="avatar" title="Your account (@${u.handle})" aria-label="Your account">${u.handle[0]}</a>
               <button class="linkish hide-sm" data-action="logout">Sign out</button></span>`
           : html`<a href="/login" data-nav="/login">Sign in</a>`
       }
@@ -375,7 +399,7 @@ function renderChrome() {
     <a href="/deals" data-nav="/deals"><span class="ico">☰</span>Deals</a>
     <a href="/submit" class="post" data-nav="/submit"><span class="ico">+</span>Post</a>
     <a href="/saved" data-nav="/saved"><span class="ico">♡</span>Saved</a>
-    ${u ? html`<a href="#" data-action="logout"><span class="ico">⎋</span>Sign out</a>` : html`<a href="/login" data-nav="/login"><span class="ico">☺</span>Sign in</a>`}
+    ${u ? html`<a href="/account" data-nav="/account"><span class="ico">☺</span>Account</a>` : html`<a href="/login" data-nav="/login"><span class="ico">☺</span>Sign in</a>`}
   `);
   $('#search-form').addEventListener('submit', (e) => {
     e.preventDefault();
@@ -406,13 +430,79 @@ const ROUTES = [
   [/^\/saved$/, savedPage],
   [/^\/login$/, loginPage],
   [/^\/register$/, registerPage],
+  [/^\/account$/, accountPage],
+  [/^\/privacy$/, privacyPage],
+  [/^\/terms$/, termsPage],
+  [/^\/delete-account$/, deleteAccountInfoPage],
   [/^\/admin(?:\/(\w+))?$/, adminPage],
 ];
+
+// ------------------------------------------------------------ Android app (Capacitor shell in mobile/)
+// The app loads this site in a WebView and injects window.Capacitor. Native plugins are called
+// through its bridge directly (no Capacitor JS bundled here). Outside the app, `native` is null.
+
+const native = window.Capacitor?.isNativePlatform?.() ? window.Capacitor : null;
+const nativeCall = (plugin, method, options = {}) => native.nativePromise(plugin, method, options);
+const nativeListen = (plugin, eventName, cb) => native.nativeCallback(plugin, 'addListener', { eventName }, cb);
+const APP_SCHEME = 'in.sharedeals.app';
+const CONTACT_EMAIL = 'support@sharedeals.in';
+
+const b64url = (bytes) => btoa(String.fromCharCode(...new Uint8Array(bytes))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+/** Google/Facebook refuse to sign in inside a WebView: run it in a Chrome tab; the server sends a one-time code back to the app. */
+async function appSignIn(provider, next) {
+  const verifier = b64url(crypto.getRandomValues(new Uint8Array(32)));
+  const challenge = b64url(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)));
+  try {
+    localStorage.setItem('appAuthVerifier', verifier);
+  } catch {
+    /* storage blocked: the code can't be redeemed, the user will see "expired" */
+  }
+  const q = new URLSearchParams({ next, app: '1', challenge });
+  await nativeCall('Browser', 'open', { url: `${location.origin}/auth/${provider}/start?${q}` });
+}
+
+/** Links that open the app: in.sharedeals.app://auth?… (sign-in hand-off) and https://…/deals/… (App Links). */
+function openAppUrl(raw) {
+  let url;
+  try {
+    url = new URL(raw);
+  } catch {
+    return;
+  }
+  if (url.protocol === `${APP_SCHEME}:`) {
+    nativeCall('Browser', 'close').catch(() => {});
+    const error = url.searchParams.get('error');
+    if (error) return navigate(`/login?error=${encodeURIComponent(error)}`);
+    let verifier = '';
+    try {
+      verifier = localStorage.getItem('appAuthVerifier') || '';
+      localStorage.removeItem('appAuthVerifier');
+    } catch {
+      /* see appSignIn */
+    }
+    // Full page load: the server sets the session cookie and redirects to where sign-in started.
+    location.href = `/auth/app/finish?${new URLSearchParams({ code: url.searchParams.get('code') || '', verifier })}`;
+    return;
+  }
+  if (/^https?:$/.test(url.protocol)) navigate(url.pathname + url.search);
+}
+
+if (native) {
+  nativeListen('App', 'backButton', ({ canGoBack }) => {
+    if (modal.open) modal.close();
+    else if (canGoBack && location.pathname !== '/') history.back();
+    else nativeCall('App', 'exitApp');
+  });
+  nativeListen('App', 'appUrlOpen', ({ url }) => openAppUrl(url));
+  document.documentElement.classList.add('in-app');
+}
 
 // ------------------------------------------------------------ analytics (GA4, see /analytics.js)
 
 const track = (event, params = {}) => window.gtag?.('event', event, params);
-const trackPageView = () => track('page_view', { page_location: location.href, page_title: document.title });
+const trackPageView = () =>
+  track('page_view', { page_location: location.href, page_title: document.title, ...(native ? { app_platform: 'android_app' } : {}) });
 
 function navigate(url, { replace = false } = {}) {
   history[replace ? 'replaceState' : 'pushState']({}, '', url);
@@ -954,10 +1044,10 @@ function socialAuth(query, verb) {
   const next = encodeURIComponent(nextUrl(query));
   return html`<div class="social-auth">
       ${providers.includes('google')
-        ? html`<a class="btn btn-social btn-google" href="/auth/google/start?next=${next}" data-reload><svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>${verb} with Google</a>`
+        ? html`<a class="btn btn-social btn-google" href="/auth/google/start?next=${next}" data-reload data-provider="google"><svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>${verb} with Google</a>`
         : ''}
       ${providers.includes('facebook')
-        ? html`<a class="btn btn-social btn-facebook" href="/auth/facebook/start?next=${next}" data-reload><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M24 12.07C24 5.41 18.63 0 12 0S0 5.4 0 12.07C0 18.1 4.39 23.1 10.13 24v-8.44H7.08v-3.49h3.05V9.41c0-3.02 1.79-4.69 4.53-4.69 1.31 0 2.68.24 2.68.24v2.97h-1.51c-1.49 0-1.96.93-1.96 1.89v2.26h3.33l-.53 3.49h-2.8V24C19.62 23.1 24 18.1 24 12.07z"/></svg>${verb} with Facebook</a>`
+        ? html`<a class="btn btn-social btn-facebook" href="/auth/facebook/start?next=${next}" data-reload data-provider="facebook"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M24 12.07C24 5.41 18.63 0 12 0S0 5.4 0 12.07C0 18.1 4.39 23.1 10.13 24v-8.44H7.08v-3.49h3.05V9.41c0-3.02 1.79-4.69 4.53-4.69 1.31 0 2.68.24 2.68.24v2.97h-1.51c-1.49 0-1.96.93-1.96 1.89v2.26h3.33l-.53 3.49h-2.8V24C19.62 23.1 24 18.1 24 12.07z"/></svg>${verb} with Facebook</a>`
         : ''}
     </div>
     <div class="or-divider"><span>or use email</span></div>`;
@@ -1005,10 +1095,141 @@ async function registerPage({ query }) {
         <div class="field"><label for="r-pw">Password</label><input id="r-pw" name="password" type="password" autocomplete="new-password" required minlength="8"></div>
         <button class="btn btn-primary" style="width:100%">Create account</button>
       </form>
+      <p class="muted small" style="text-align:center">By creating an account you agree to the <a href="/terms">Terms</a> and <a href="/privacy">Privacy Policy</a>.</p>
       <p class="muted small" style="text-align:center">Already have an account? <a href="/login?next=${encodeURIComponent(nextUrl(query))}">Sign in</a></p>
     </div>`,
   );
   authForm('#reg-form', '/api/auth/register', query);
+}
+
+// ============================================================ pages: account, privacy, terms
+
+async function accountPage() {
+  if (!state.user) return goLogin();
+  const u = state.user;
+  setPage(
+    'Your account',
+    html`<div class="panel narrow"><h1 style="margin-top:0">Your account</h1>
+      <p><strong>@${u.handle}</strong><br><span class="muted">${u.email}</span>${u.role !== 'user' ? html` · <span class="badge">${u.role}</span>` : ''}</p>
+      <p class="actions" style="margin:16px 0">
+        <a class="btn" href="/saved">Saved deals</a>
+        <a class="btn" href="/saved?tab=posts">My posts</a>
+        <button class="btn" data-action="logout">Sign out</button>
+      </p>
+      <p class="muted small"><a href="/privacy">Privacy Policy</a> · <a href="/terms">Terms</a> · <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
+      <hr style="border:0;border-top:1px solid var(--border);margin:24px 0">
+      <h2 style="font-size:18px">Delete account</h2>
+      <p class="muted small">This permanently deletes your account, email, comments, votes and saved deals. Deals and store links you posted stay up for the community, credited to "deleted user". This can't be undone.</p>
+      <form id="delete-form">
+        <div class="form-error" hidden></div>
+        <div class="field"><label for="d-confirm">Type your username <strong>${u.handle}</strong> to confirm</label>
+          <input id="d-confirm" name="confirm" autocomplete="off" autocapitalize="none" spellcheck="false" required></div>
+        <button class="btn btn-danger">Delete my account</button>
+      </form>
+    </div>`,
+  );
+  const form = $('#delete-form');
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errBox = $('.form-error', form);
+    errBox.hidden = true;
+    try {
+      await api('/api/me', { method: 'DELETE', body: { confirm: form.confirm.value.trim() } });
+      track('delete_account');
+      state.user = null;
+      renderChrome();
+      toast('Your account has been deleted');
+      navigate('/', { replace: true });
+    } catch (err) {
+      errBox.hidden = false;
+      errBox.textContent = err.message;
+    }
+  });
+}
+
+const legalPage = (title, updated, body) =>
+  setPage(title, html`<article class="panel legal"><h1 style="margin-top:0">${title}</h1><p class="muted small">Last updated ${updated}</p>${body}</article>`);
+
+async function privacyPage() {
+  legalPage(
+    'Privacy Policy',
+    '9 October 2026',
+    html`
+    <p>ShareDeals.in ("ShareDeals", "we") is a community site and Android app where people in India share and discuss deals from online stores. This policy explains what we collect and why, in line with India's Digital Personal Data Protection Act, 2023.</p>
+    <h2>What we collect</h2>
+    <ul>
+      <li><strong>Account details:</strong> email address, username, and a securely hashed password. If you sign in with Google or Facebook, we receive your name, email address and an account identifier from them.</li>
+      <li><strong>What you post and do:</strong> deals and store links, prices, comments, votes, saved deals, reports, and deals you view (used to personalise "For You").</li>
+      <li><strong>Usage and device data:</strong> we use Google Analytics, which sets cookies and collects pages visited, interactions, device and browser type, and approximate location. Our servers also see your IP address, used for security and to limit abuse.</li>
+    </ul>
+    <h2>How we use it</h2>
+    <ul>
+      <li>To run your account and show your posts, comments and votes.</li>
+      <li>To rank and personalise deals.</li>
+      <li>To keep the community safe: moderation, fraud and abuse prevention.</li>
+      <li>To understand how the service is used so we can improve it.</li>
+    </ul>
+    <p>We do not sell your personal data.</p>
+    <h2>Who we share it with</h2>
+    <ul>
+      <li><strong>Service providers:</strong> our hosting provider (Railway) and Google Analytics.</li>
+      <li><strong>Sign-in providers:</strong> Google or Facebook, if you choose to sign in with them.</li>
+      <li><strong>Everyone:</strong> your username and everything you post are public.</li>
+      <li><strong>Stores:</strong> when you open a deal, you go to that store's website or app, and its own privacy policy applies.</li>
+    </ul>
+    <h2>How long we keep it</h2>
+    <p>We keep account data while your account exists. When you delete your account, we delete your email, sign-in links, comments, votes, saved deals and reports. Deals and store links you posted stay up, credited to an anonymous "deleted user". Server logs are kept for a limited time for security.</p>
+    <h2>Your rights</h2>
+    <p>You can see and correct your information, and delete your account at any time from <a href="/account">Your account</a> (see <a href="/delete-account">how to delete your account</a>). You can also ask us for a summary of your data, a correction or erasure, or raise a grievance, by emailing <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>. We respond within 30 days.</p>
+    <h2>Children</h2>
+    <p>ShareDeals is not intended for anyone under 18.</p>
+    <h2>Changes</h2>
+    <p>We'll update this page if this policy changes, and change the date above.</p>
+    <h2>Contact</h2>
+    <p>Email <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>.</p>`,
+  );
+}
+
+async function termsPage() {
+  legalPage(
+    'Terms of Use',
+    '9 October 2026',
+    html`
+    <p>By using ShareDeals.in or the ShareDeals app, you agree to these terms.</p>
+    <h2>Your account</h2>
+    <p>You must be 18 or older. Keep your sign-in details safe; you're responsible for what is posted from your account.</p>
+    <h2>Posting deals and comments</h2>
+    <p>Post genuine deals from the approved stores, with accurate prices. You keep ownership of what you post, and you let ShareDeals display it on the site and in the app.</p>
+    <p>Do not post:</p>
+    <ul>
+      <li>spam or misleading prices</li>
+      <li>abusive, hateful, sexual or illegal content</li>
+      <li>other people's personal information</li>
+      <li>malware, or links that don't lead to the product</li>
+    </ul>
+    <h2>Moderation</h2>
+    <p>Anyone can report a deal, store link or comment. Moderators may edit, merge or remove content, and suspend or ban accounts that break these terms.</p>
+    <h2>Deals and stores</h2>
+    <p>Deals are posted by the community. Prices and availability change, and purchases happen on the store's own site under its terms. ShareDeals isn't responsible for products, prices or orders. Some links may earn ShareDeals or the poster a commission.</p>
+    <h2>Changes and contact</h2>
+    <p>We may update these terms and will change the date above. Questions: <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>.</p>`,
+  );
+}
+
+async function deleteAccountInfoPage() {
+  legalPage(
+    'Delete your ShareDeals account',
+    '9 October 2026',
+    html`
+    <p>You can delete your ShareDeals account and its data at any time, on the website or in the Android app:</p>
+    <ol>
+      <li>Sign in, then open <a href="/account"><strong>Your account</strong></a>. In the app, tap <strong>Account</strong> in the bottom bar.</li>
+      <li>Under <strong>Delete account</strong>, type your username and tap <strong>Delete my account</strong>.</li>
+    </ol>
+    <p><strong>Deleted straight away:</strong> your email address, password, Google/Facebook sign-in links, sessions, comments, votes, saved deals, viewing history and reports.</p>
+    <p><strong>Kept:</strong> deals and store links you posted stay visible for the community, credited to an anonymous "deleted user", with nothing linking them to you. Security logs are kept for a limited time.</p>
+    <p>Can't sign in? Email <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a> from your account's email address and we'll delete it within 30 days.</p>`,
+  );
 }
 
 function authForm(sel, endpoint, query) {
@@ -1347,4 +1568,17 @@ async function adminAudit({ shell, query, alive }) {
   }
   renderChrome();
   renderRoute();
+  // Opened by a link while the app wasn't running. Android keeps reporting the launch link for
+  // the app's lifetime, so remember it's been handled (the sign-in hand-off reloads the page).
+  if (native) {
+    const { url } = (await nativeCall('App', 'getLaunchUrl').catch(() => null)) || {};
+    let seen = null;
+    try {
+      seen = sessionStorage.getItem('launchUrlHandled');
+      sessionStorage.setItem('launchUrlHandled', url || '');
+    } catch {
+      /* no storage: handle it anyway */
+    }
+    if (url && url !== seen) openAppUrl(url);
+  }
 })();

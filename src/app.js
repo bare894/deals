@@ -206,6 +206,16 @@ export function createApp({
       if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, { error: 'Method not allowed' });
       if (pathname.startsWith('/auth/') && (await oauth.handle(req, res, url, send))) return;
 
+      // Android App Links: lets the app open sharedeals.in/deals/… links. ANDROID_CERT_SHA256 lists
+      // the SHA-256 fingerprints of the app's signing certificates (Play Console → App integrity).
+      if (pathname === '/.well-known/assetlinks.json') {
+        const fingerprints = String(process.env.ANDROID_CERT_SHA256 || '').split(',').map((s) => s.trim().toUpperCase()).filter(Boolean);
+        const statements = fingerprints.length
+          ? [{ relation: ['delegate_permission/common.handle_all_urls'], target: { namespace: 'android_app', package_name: 'in.sharedeals.app', sha256_cert_fingerprints: fingerprints } }]
+          : [];
+        return send(res, 200, JSON.stringify(statements), { 'content-type': 'application/json', 'cache-control': 'public, max-age=3600' });
+      }
+
       if (pathname === '/img/placeholder.svg') {
         const t = url.searchParams.get('t') || 'Deal';
         const hue = Number(url.searchParams.get('h') ?? [...t].reduce((a, c) => a + c.charCodeAt(0), 0) % 360);

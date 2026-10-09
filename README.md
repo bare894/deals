@@ -1,6 +1,7 @@
 # ShareDeals
 
 > Deployment, architecture decisions and known issues: see [PROJECT_NOTES.md](PROJECT_NOTES.md).
+> Android app (Capacitor): see [mobile/README.md](mobile/README.md).
 
 A Slickdeals-style community deals platform **for India**, built from [prd.md](prd.md). Users post deals from Flipkart, Amazon.in, Myntra, AJIO, Nykaa, Meesho and other retailers by pasting a URL, and the community votes, comments, and saves them. Moderators and Admins keep the catalog clean from a desktop-web **Admin Mode**.
 
@@ -70,7 +71,7 @@ On any approved store's product page, click the toolbar button. A popup opens th
 
 **Auto-fill:** the extension copies the product details from the page as you see it (meta tags, JSON-LD, Amazon's price box and breadcrumbs, MRP labels, and the price fields of embedded app state; typically 10–40 KB) and hands them to the popup. The server reads that copy with the same extractor it uses for fetched pages, so auto-fill works even when a store blocks requests from servers. The server only fetches the page itself to fill in anything missing.
 
-The extension posts to `https://sharedeals.in` by default; change this on its Options page (for example `http://localhost:3000` for development). Handing the page details to the popup needs the site's address in `host_permissions` in `extension/manifest.json`. sharedeals.in, `*.up.railway.app` and localhost are already listed. For any other address the extension still works, but the server has to fetch the page itself.
+The extension posts to `https://www.sharedeals.in` by default; change this on its Options page (for example `http://localhost:3000` for development). Handing the page details to the popup needs the site's address in `host_permissions` in `extension/manifest.json`. sharedeals.in, `*.up.railway.app` and localhost are already listed. For any other address the extension still works, but the server has to fetch the page itself.
 
 ## Not built: native iOS/Android apps (PRD Phase 4)
 
@@ -104,7 +105,7 @@ test/                node:test suites
 ## Deploying on Railway
 
 1. Create a project with a **PostgreSQL** service and a service for this repo. In the app service's variables, reference the database: `DATABASE_URL=${{Postgres.DATABASE_URL}}`.
-2. Set `NODE_ENV=production`, `SEED=0`, `PUBLIC_URL=https://sharedeals.in`, and the optional social sign-in keys.
+2. Set `NODE_ENV=production`, `SEED=0`, `PUBLIC_URL=https://www.sharedeals.in`, and the optional social sign-in keys.
 3. The build runs `npm install` and the start command is `npm start` (Railway detects both). Tables are created on first boot. To create them by hand instead, run `npm run migrate`. It is safe to run any number of times and never deletes data.
    - **Data wiped on every deploy?** Then the app isn't connected to the Postgres service. Without `DATABASE_URL` it would store data on the container's disk, which each deploy replaces. The server now refuses to start on Railway without `DATABASE_URL`, so this fails loudly instead of losing data.
-4. Add the custom domain `sharedeals.in` in the service's Networking settings, then create the DNS record Railway shows you.
+4. Add the custom domain `www.sharedeals.in` in the service's Networking settings, then create the DNS record Railway shows you (a CNAME on `www`). The bare `sharedeals.in` can only be forwarded to `www` by GoDaddy, which drops paths, so always use the `www` address in links and settings.

@@ -1,0 +1,19 @@
+<!doctype html>
+<!-- Shown by Capacitor (server.errorPath) when the site can't be reached. -->
+<html lang="en-IN">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ShareDeals: offline</title>
+<style>
+  body { font: 16px/1.5 system-ui, sans-serif; margin: 0; display: grid; place-items: center; min-height: 100vh; background: #fff; color: #1d1d1b; text-align: center; }
+  img { width: 180px; margin-bottom: 16px; }
+  a { display: inline-block; margin-top: 16px; padding: 12px 22px; border-radius: 10px; background: #ec0276; color: #fff; text-decoration: none; font-weight: 600; }
+  @media (prefers-color-scheme: dark) { body { background: #141413; color: #ecebe7; } }
+</style>
+<main>
+  <picture><source srcset="logo-dark.png" media="(prefers-color-scheme: dark)"><img src="logo.png" alt="ShareDeals.in"></picture>
+  <h1 style="font-size:20px;margin:0 0 6px">You're offline</h1>
+  <p style="margin:0;opacity:.75">Check your internet connection and try again.</p>
+  <!-- Keep in step with server.url in capacitor.config.json. -->
+  <a href="https://deals-production-1ecf.up.railway.app/">Try again</a>
+</main>
+</html>

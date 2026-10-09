@@ -212,6 +212,7 @@ export function registerAdminRoutes({ route, db, repo }) {
     if (!target) throw new HttpError(404, 'User not found');
     if (target.id === actor.id) throw new HttpError(400, "You can't change your own account here");
     if (target.role === 'admin') throw new HttpError(403, 'Admins cannot be modified from Admin Mode');
+    if (target.status === 'deleted') throw new HttpError(409, 'This account was deleted by its owner');
     return target;
   }
 

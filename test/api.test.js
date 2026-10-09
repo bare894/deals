@@ -248,6 +248,38 @@ test('end-to-end: auth, submit, dedup, vote, comment, bookmark, moderation', asy
     assert.ok(audit.data.items.some((a) => a.actor === 'mod'), 'admin sees other moderators’ actions');
   });
 
+  await t.test('account deletion: anonymized, personal data gone, votes taken back out of scores', async () => {
+    const leaver = client();
+    const reg = await leaver.post('/api/auth/register', { email: 'leaver@t.test', handle: 'leaver', password: 'password123' });
+    assert.equal(reg.status, 200, JSON.stringify(reg.data));
+    const posted = await poster.post('/api/deals', dealBody('https://shop.com/leaver-deal', { title: 'Leaver Test Kettle', confirmNew: true }));
+    assert.equal(posted.status, 200, JSON.stringify(posted.data));
+    const id = posted.data.deal.id;
+    const before = (await anon.get(`/api/deals/${id}`)).data.deal;
+    assert.equal((await leaver.post(`/api/deals/${id}/vote`, { value: 1 })).status, 200);
+    await leaver.post(`/api/deals/${id}/comments`, { body: 'bye' });
+    await leaver.put(`/api/deals/${id}/bookmark`);
+
+    assert.equal((await leaver.del('/api/me', { confirm: 'wrong' })).status, 400);
+    assert.equal((await admin.del('/api/me', { confirm: 'admin' })).status, 403, 'admins must be demoted first');
+    const del = await leaver.del('/api/me', { confirm: 'LEAVER' });
+    assert.equal(del.status, 200, JSON.stringify(del.data));
+
+    const after = (await anon.get(`/api/deals/${id}`)).data.deal;
+    assert.equal(after.score, before.score, 'their upvote no longer counts');
+    const comments = (await anon.get(`/api/deals/${id}/comments`)).data.comments;
+    assert.ok(!comments.some((c) => c.body === 'bye'), 'their comments are gone');
+    assert.equal((await leaver.get('/api/me/bookmarks')).status, 401, 'signed out everywhere');
+    const relogin = await anon.post('/api/auth/login', { login: 'leaver', password: 'password123' });
+    assert.equal(relogin.status, 401);
+    const row = await db.get("SELECT email, handle, status, password_hash FROM users WHERE email LIKE 'deleted-%'");
+    assert.equal(row.status, 'deleted');
+    assert.match(row.handle, /^deleted_[0-9a-f]{8}$/);
+    assert.equal(row.password_hash, '');
+    // The handle and email are free to use again.
+    assert.equal((await client().post('/api/auth/register', { email: 'leaver@t.test', handle: 'leaver', password: 'password123' })).status, 200);
+  });
+
   await t.test('categories: admin can add + hide', async () => {
     const c = await admin.post('/api/admin/categories', { name: 'Pets' });
     assert.equal(c.status, 200);
