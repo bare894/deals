@@ -328,7 +328,7 @@ function renderChrome() {
   const u = state.user;
   const q = new URLSearchParams(location.search).get('q') || '';
   $('#topbar').innerHTML = String(html`<div class="topbar-inner">
-    <a class="logo" href="/"><img src="/favicon.svg" alt=""><span class="wordmark">Share<span>Deals</span><small class="tld">.in</small></span></a>
+    <a class="logo" href="/" aria-label="ShareDeals.in home"><picture class="logo-full"><source srcset="/img/logo-dark.png" media="(prefers-color-scheme: dark)"><img src="/img/logo.png" alt="ShareDeals.in" width="166" height="44"></picture><picture class="logo-mark"><source srcset="/img/mark-dark.png" media="(prefers-color-scheme: dark)"><img src="/img/mark.png" alt="ShareDeals.in" width="80" height="44"></picture></a>
     <form class="search" id="search-form" role="search">
       <input type="search" name="q" placeholder="Search deals or stores" aria-label="Search deals" value="${q}">
     </form>

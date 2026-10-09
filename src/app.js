@@ -120,6 +120,16 @@ export function createApp({
         ])
         .join('\n    ');
       html = html.replace(/<title>[^<]*<\/title>/, `<title>${escapeHtml(d.title)} — ShareDeals</title>`);
+    } else {
+      // Every other page unfurls as the site itself, with the logo card.
+      tags = [
+        ['og:type', 'website'], ['og:site_name', 'ShareDeals'], ['og:title', 'ShareDeals.in — community-vetted deals in India'],
+        ['og:description', 'Find, vote on, and share the best deals from Flipkart, Amazon, Myntra, AJIO, Nykaa, Meesho and more.'],
+        ['og:url', `${baseUrl(req)}/`], ['og:image', `${baseUrl(req)}/img/og-image.png`], ['og:locale', 'en_IN'],
+      ]
+        .map(([p, c]) => `<meta property="${p}" content="${escapeHtml(c)}">`)
+        .concat(['<meta name="twitter:card" content="summary_large_image">'])
+        .join('\n    ');
     }
     return html.replace('<!--OG-->', tags);
   }

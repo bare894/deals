@@ -56,9 +56,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .topbar { position: sticky; top: 0; z-index: 20; background: var(--surface); border-bottom: 1px solid var(--border); }
 .topbar-inner { max-width: 1240px; margin: 0 auto; padding: 10px 16px; display: flex; align-items: center; gap: 16px; }
 .logo { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 20px; text-decoration: none; letter-spacing: -0.02em; white-space: nowrap; }
-.logo img { width: 30px; height: 30px; }
-.logo span { color: var(--accent); }
-.logo .tld { font-size: 0.7em; font-weight: 700; color: var(--muted); margin-left: 1px; }
+.logo picture { display: flex; }
+.logo img { height: 44px; width: auto; display: block; }
+.logo .logo-mark { display: none; }
 .search { flex: 1; max-width: 520px; position: relative; }
 .search input { width: 100%; padding: 9px 14px 9px 36px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface-2); }
 .search::before { content: '⌕'; position: absolute; left: 13px; top: 50%; transform: translateY(-52%); color: var(--muted); font-size: 18px; }
@@ -79,7 +79,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
   .tabbar a.active { color: var(--accent); }
   .tabbar a.post .ico { background: var(--accent); color: var(--accent-ink); border-radius: 10px; width: 34px; height: 26px; display: grid; place-items: center; font-size: 18px; }
   .topbar-inner { gap: 10px; }
-  .logo .wordmark { display: none; }
+  .logo .logo-full { display: none; }
+  .logo .logo-mark { display: flex; }
+  .logo img { height: 36px; }
 }
 
 /* ---------- buttons & forms ---------- */
