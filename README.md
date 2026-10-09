@@ -22,6 +22,8 @@ Demo accounts (password `password123`): `admin` (Admin), `mod_priya` (Moderator)
 
 Env vars: `PORT` (3000), `DB_FILE` (`data/deals.db`), `PUBLIC_URL` (absolute base for share/OG links), `NODE_ENV=production` (Secure cookies, static caching).
 
+**Social sign-in (optional):** set `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` and/or `FACEBOOK_APP_ID` + `FACEBOOK_APP_SECRET`. Each button appears on the sign-in and register pages only when its pair is set. Register these redirect URIs with the provider: `<PUBLIC_URL>/auth/google/callback` and `<PUBLIC_URL>/auth/facebook/callback`. The first social sign-in creates an account, or links to an existing account with the same verified email. Code: `src/oauth.js`.
+
 ## What's built (PRD section → where)
 
 | PRD | Feature | Notes |

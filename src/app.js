@@ -10,6 +10,7 @@ import { registerAuthRoutes } from './routes/auth.js';
 import { registerDealRoutes } from './routes/deals.js';
 import { registerOfferRoutes } from './routes/offers.js';
 import { registerAdminRoutes } from './routes/admin.js';
+import { createOAuth, oauthConfigFromEnv } from './oauth.js';
 
 export { HttpError };
 
@@ -23,6 +24,7 @@ const RATE_LIMITS = {
   vote: [120, 10 * MIN],
   comment: [20, 10 * MIN],
   report: [20, HOUR],
+  oauth: [30, 15 * MIN],
 };
 
 const MIME = {
@@ -55,10 +57,14 @@ export function createApp({
   rateLimits = true,
   secureCookies = false,
   publicUrl = process.env.PUBLIC_URL,
+  oauth: oauthConfig = oauthConfigFromEnv(),
+  oauthFetch,
 }) {
   const { route, match } = createRouter();
   const repo = createRepo(db);
-  const ctx = { route, db, repo, rateLimit: makeRateLimiter(RATE_LIMITS, rateLimits), scraper, resolveUrl, secureCookies };
+  const rateLimit = makeRateLimiter(RATE_LIMITS, rateLimits);
+  const oauth = createOAuth({ db, config: oauthConfig, secureCookies, baseUrl: (req) => baseUrl(req), rateLimit, fetchImpl: oauthFetch });
+  const ctx = { route, db, repo, rateLimit, scraper, resolveUrl, secureCookies, oauthProviders: oauth.enabled };
   registerAuthRoutes(ctx);
   registerDealRoutes(ctx);
   registerOfferRoutes(ctx);
@@ -191,6 +197,7 @@ export function createApp({
     try {
       if (pathname.startsWith('/api/')) return await handleApi(req, res, url);
       if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, { error: 'Method not allowed' });
+      if (pathname.startsWith('/auth/') && (await oauth.handle(req, res, url, send))) return;
 
       if (pathname === '/img/placeholder.svg') {
         const t = url.searchParams.get('t') || 'Deal';

@@ -11,6 +11,15 @@ CREATE TABLE IF NOT EXISTS users (
   created_at    INTEGER NOT NULL
 );
 
+-- Social sign-in links: one row per (provider, provider's user id). A user can link several.
+CREATE TABLE IF NOT EXISTS oauth_identities (
+  provider   TEXT NOT NULL,
+  subject    TEXT NOT NULL,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (provider, subject)
+);
+
 CREATE TABLE IF NOT EXISTS sessions (
   token      TEXT PRIMARY KEY,
   user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -142,7 +151,7 @@ CREATE TABLE IF NOT EXISTS moderation_actions (
 `;
 
 const SCHEMA_VERSION = 2;
-const TABLES = ['moderation_actions', 'reports', 'views', 'bookmarks', 'comments', 'votes', 'offers', 'deals', 'categories', 'sessions', 'users'];
+const TABLES = ['moderation_actions', 'reports', 'views', 'bookmarks', 'comments', 'votes', 'offers', 'deals', 'categories', 'sessions', 'oauth_identities', 'users'];
 
 export function openDb(file) {
   const db = new DatabaseSync(file);

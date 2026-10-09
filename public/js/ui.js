@@ -247,7 +247,7 @@ export function installGlobalHandlers() {
       return;
     }
     const a = e.target.closest('a[href]');
-    if (!a || a.target || a.hasAttribute('download') || a.origin !== location.origin) return;
+    if (!a || a.target || a.hasAttribute('download') || a.hasAttribute('data-reload') || a.origin !== location.origin) return;
     if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     e.preventDefault();
     navigate(a.pathname + a.search + a.hash);

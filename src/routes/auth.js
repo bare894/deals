@@ -2,9 +2,11 @@ import { HttpError, str, isUniqueViolation } from '../http.js';
 import { createSession, destroySession, hashPassword, sessionCookie, verifyPassword } from '../auth.js';
 import { publicUser } from './common.js';
 
-export function registerAuthRoutes({ route, db, rateLimit, secureCookies }) {
+export function registerAuthRoutes({ route, db, rateLimit, secureCookies, oauthProviders = [] }) {
   route('GET', '/api/meta', ({ user }) => ({
     user: publicUser(user),
+    oauth: oauthProviders,
+    demo: process.env.NODE_ENV !== 'production',
     categories: db.prepare("SELECT id, name, slug FROM categories WHERE active = 1 ORDER BY name = 'Other', name").all().map((c) => ({ ...c })),
   }));
 
