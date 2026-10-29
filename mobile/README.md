@@ -7,7 +7,7 @@ Website changes reach the app as soon as they're deployed on Railway, **without 
 | | |
 |---|---|
 | App ID (package name) | `in.sharedeals.app` |
-| Site the app loads | `server.url` in `capacitor.config.json`, currently `https://deals-production-1ecf.up.railway.app` (switch to `https://www.sharedeals.in` once that works; see step 6) |
+| Site the app loads | `server.url` in `capacitor.config.json`, currently `https://www.sharedeals.in` |
 | Sign-in return scheme | `in.sharedeals.app://auth` |
 | Min / target Android | 7.0 (API 24) / API 36 |
 
@@ -72,7 +72,7 @@ Google Play needs an **Android App Bundle (`.aab`)** signed with your **upload k
 
 | Variable | Value |
 |---|---|
-| `PUBLIC_URL` | The same address as `server.url`: the Railway address for now, then `https://www.sharedeals.in` once that works. Google/Facebook send people back to `<PUBLIC_URL>/auth/…/callback`. |
+| `PUBLIC_URL` | The same address as `server.url`: `https://www.sharedeals.in`. Google/Facebook send people back to `<PUBLIC_URL>/auth/…/callback`. |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`, `FACEBOOK_APP_ID` / `FACEBOOK_APP_SECRET` | As for the website. The app uses the same web sign-in, so no Android-specific Google or Facebook setup is needed. Make sure the redirect URIs registered with Google and Facebook use the `PUBLIC_URL` address. |
 | `ANDROID_CERT_SHA256` | The SHA-256 fingerprint of the **app signing key** (§6 step 4), so shared deal links open in the app. Separate several fingerprints with commas. |
 
@@ -107,8 +107,8 @@ Google Play needs an **Android App Bundle (`.aab`)** signed with your **upload k
 6. **Closed testing** (personal accounts): the same steps with at least 12 testers, kept opted in for 14 days.
 7. **Production:** promote the release, set countries to **India** (or more), and submit for review. Reviews usually take a few hours to a few days.
 
-**When `www.sharedeals.in` works**, switch the app to it before your production release:
-1. Set `server.url` in `capacitor.config.json` to `https://www.sharedeals.in`.
+**To change the site address** the app loads:
+1. Set `server.url` in `capacitor.config.json`.
 2. Update the **Try again** link in `www/offline.html` to match.
 3. Change `PUBLIC_URL` on Railway, and update the redirect URIs registered with Google and Facebook.
 4. Raise `versionCode`, then run `npx cap sync android` and build a new `.aab`.

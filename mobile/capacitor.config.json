@@ -3,7 +3,7 @@
   "appName": "ShareDeals",
   "webDir": "www",
   "server": {
-    "url": "https://deals-production-1ecf.up.railway.app",
+    "url": "https://www.sharedeals.in",
     "androidScheme": "https",
     "errorPath": "offline.html",
     "allowNavigation": [
