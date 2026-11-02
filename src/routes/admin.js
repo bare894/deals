@@ -60,6 +60,7 @@ export function registerAdminRoutes({ route, db, repo }) {
     const status = ['active', 'removed'].includes(query.get('status')) ? query.get('status') : null;
     const q = (query.get('q') || '').trim();
     const page = intParam(query.get('page'), 1, { max: 1000 });
+    const dir = query.get('sort') === 'asc' ? 'ASC' : 'DESC';
     const where = ['1 = 1'];
     const params = [];
     if (status) where.push('d.status = ?'), params.push(status);
@@ -68,7 +69,7 @@ export function registerAdminRoutes({ route, db, repo }) {
       where.push("(d.title ILIKE ? ESCAPE '\\' OR u.handle ILIKE ? ESCAPE '\\' OR CAST(d.id AS TEXT) = ?)");
       params.push(like, like, q.replace(/^#/, ''));
     }
-    const rows = await db.all(`${repo.DEAL_SELECT} WHERE ${where.join(' AND ')} ORDER BY d.created_at DESC LIMIT 51 OFFSET ?`, ...params, (page - 1) * 50);
+    const rows = await db.all(`${repo.DEAL_SELECT} WHERE ${where.join(' AND ')} ORDER BY d.created_at ${dir}, d.id ${dir} LIMIT 51 OFFSET ?`, ...params, (page - 1) * 50);
     return { items: rows.slice(0, 50).map((r) => ({ ...repo.serializeDeal(r), mergedInto: r.merged_into })), page, hasMore: rows.length > 50 };
   });
 

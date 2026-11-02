@@ -63,6 +63,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .topbar { position: sticky; top: 0; z-index: 20; background: var(--surface); border-bottom: 1px solid var(--border); padding-top: env(safe-area-inset-top); }
 .topbar-inner { max-width: 1240px; margin: 0 auto; padding: 10px 16px; display: flex; align-items: center; gap: 16px; }
 .logo { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 20px; text-decoration: none; letter-spacing: -0.02em; white-space: nowrap; }
+th .th-sort { color: inherit; text-decoration: none; }
+th .th-sort:hover { color: var(--text, inherit); }
 .logo picture { display: flex; }
 .logo img { height: 44px; width: auto; display: block; }
 .logo .logo-mark { display: none; }

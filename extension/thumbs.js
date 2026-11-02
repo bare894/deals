@@ -21,6 +21,13 @@ const STORES = [
     anchor: (card) => card.parentElement,
   },
   { host: /(^|\.)amazon\.in$/, card: 'li.a-carousel-card', link: 'a[href*="/dp/"]' },
+  // Anything else (Today's Deals grid, widgets): any product image link not inside a card above.
+  {
+    host: /(^|\.)amazon\.in$/,
+    card: 'a[href*="/dp/"]:has(img)',
+    link: (card) => card.href,
+    anchor: (card) => card.parentElement,
+  },
   // Myntra: an "AD" badge sits top-left; lower tiles are lazy placeholders without an <img> until scrolled to.
   { host: /(^|\.)myntra\.com$/, card: 'li.product-base', link: 'a[href*="/buy"]', corner: 'right' },
 ];
@@ -111,7 +118,7 @@ async function post(btn, card, rule) {
 function decorate(rule) {
   for (const card of document.querySelectorAll(rule.card)) {
     const anchor = rule.anchor ? rule.anchor(card) : card;
-    if (!anchor || anchor.querySelector(':scope > .sd-quick')) continue;
+    if (!anchor || anchor.querySelector(':scope > .sd-quick') || card.closest('[data-sd]') || card.querySelector('[data-sd]')) continue;
     if (typeof rule.link === 'string' && !deepQuery(card, rule.link)) continue;
     const btn = document.createElement('button');
     btn.type = 'button';
@@ -126,6 +133,7 @@ function decorate(rule) {
     }, true);
     if (getComputedStyle(anchor).position === 'static') anchor.style.position = 'relative';
     anchor.prepend(btn);
+    card.dataset.sd = '';
   }
 }
 

@@ -1386,6 +1386,8 @@ function bindToolbar() {
   const go = () => {
     const p = new URLSearchParams();
     for (const [k, v] of new FormData(f)) if (v) p.set(k, v);
+    const sort = new URLSearchParams(location.search).get('sort');
+    if (sort) p.set('sort', sort);
     navigate(`${location.pathname}${p.toString() ? `?${p}` : ''}`, { replace: true });
   };
   f.addEventListener('submit', (e) => {
@@ -1396,12 +1398,16 @@ function bindToolbar() {
 }
 
 async function adminDeals({ shell, query, alive, reload }) {
-  const p = new URLSearchParams({ q: query.get('q') || '', status: query.get('status') || '' });
+  const sort = query.get('sort') === 'asc' ? 'asc' : 'desc';
+  const p = new URLSearchParams({ q: query.get('q') || '', status: query.get('status') || '', sort });
   const { items } = await api(`/api/admin/deals?${p}`);
+  const flipped = new URLSearchParams(query);
+  if (sort === 'asc') flipped.delete('sort');
+  else flipped.set('sort', 'asc');
   if (!alive()) return;
   shell(html`${adminToolbar(query, [['', 'All statuses'], ['active', 'Active'], ['removed', 'Removed']], 'Search title, store, or poster')}
     <div class="table-wrap"><table>
-      <thead><tr><th>Deal</th><th>Store</th><th>Poster</th><th class="num">Score</th><th>Status</th><th>Posted</th><th></th></tr></thead>
+      <thead><tr><th>Deal</th><th>Store</th><th>Poster</th><th class="num">Score</th><th>Status</th><th><a class="th-sort" href="${location.pathname}${flipped.toString() ? `?${flipped}` : ''}" title="${sort === 'asc' ? 'Oldest first' : 'Newest first'}">Posted ${sort === 'asc' ? '▲' : '▼'}</a></th><th></th></tr></thead>
       <tbody>${items.map(
         (d) => html`<tr>
           <td><a class="cell-title" href="/deals/${d.id}" target="_blank" rel="noopener">${d.title}</a></td>
