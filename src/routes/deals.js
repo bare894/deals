@@ -55,7 +55,7 @@ export function registerDealRoutes({ route, db, repo, rateLimit, scraper, resolv
    * first, since stores often block requests from servers; we only fetch to fill gaps.
    */
   route('POST', '/api/deals/prefill', { auth: true, active: true, maxBody: 1_000_000 }, async ({ body, user }) => {
-    rateLimit('scrape', user.id);
+    if (!isMod(user)) rateLimit('scrape', user.id); // staff seed deals in bulk
     const link = await resolveLink(body.url, resolveUrl, approvedStores);
     const dup = await repo.findActiveOfferByHash(link.hash);
     if (dup) throw duplicateLinkError(dup);
@@ -84,7 +84,7 @@ export function registerDealRoutes({ route, db, repo, rateLimit, scraper, resolv
   });
 
   route('POST', '/api/deals', { auth: true, active: true }, async ({ body, user }) => {
-    rateLimit('submit', user.id);
+    if (!isMod(user)) rateLimit('submit', user.id);
     const link = await resolveLink(body.url, resolveUrl, approvedStores);
     const deal = await validateDealBody(db, body);
     const offer = validateOfferBody(body);
