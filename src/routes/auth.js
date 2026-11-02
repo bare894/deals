@@ -4,6 +4,8 @@ import { HttpError, str, isUniqueViolation } from '../http.js';
 import { createSession, destroySession, hashPassword, sessionCookie, verifyPassword } from '../auth.js';
 import { APPROVED_STORES, publicUser } from './common.js';
 
+const DELETE_PHRASE = 'DELETE MY ACCOUNT';
+
 export function registerAuthRoutes({ route, db, rateLimit, secureCookies, oauthProviders = [], approvedStores = APPROVED_STORES }) {
   route('GET', '/api/meta', async ({ user }) => ({
     user: publicUser(user),
@@ -52,7 +54,14 @@ export function registerAuthRoutes({ route, db, rateLimit, secureCookies, oauthP
    */
   route('DELETE', '/api/me', { auth: true }, async ({ body, user, setCookie }) => {
     if (String(body.confirm || '').toLowerCase() !== user.handle.toLowerCase()) throw new HttpError(400, `Type your username (${user.handle}) to confirm`);
+    if (String(body.phrase || '').trim().toUpperCase() !== DELETE_PHRASE) throw new HttpError(400, `Type ${DELETE_PHRASE} to confirm`);
     if (user.role === 'admin') throw new HttpError(403, 'Admin accounts cannot be deleted here. Ask another admin to remove your admin role first.');
+    // Accounts with a password must re-enter it (Google/Facebook-only accounts have none).
+    const { password_hash: hash } = await db.get('SELECT password_hash FROM users WHERE id = ?', user.id);
+    if (hash) {
+      rateLimit('login', `delete:${user.id}`);
+      if (!verifyPassword(String(body.password || ''), hash)) throw new HttpError(401, 'Incorrect password');
+    }
     await tx(db, async () => {
       // Take the user's votes back out of deal scores before deleting them.
       await db.run(

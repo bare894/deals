@@ -27,7 +27,7 @@ export async function createSession(db, userId) {
 export async function userForToken(db, token) {
   if (!token) return null;
   const row = await db.get(
-    `SELECT u.id, u.email, u.handle, u.role, u.status, u.created_at
+    `SELECT u.id, u.email, u.handle, u.role, u.status, u.created_at, u.password_hash <> '' AS has_password
        FROM sessions s JOIN users u ON u.id = s.user_id
       WHERE s.token = ? AND s.expires_at > ?`,
     token, Date.now(),

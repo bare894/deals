@@ -431,6 +431,7 @@ const ROUTES = [
   [/^\/login$/, loginPage],
   [/^\/register$/, registerPage],
   [/^\/account$/, accountPage],
+  [/^\/account\/delete$/, deleteAccountPage],
   [/^\/privacy$/, privacyPage],
   [/^\/terms$/, termsPage],
   [/^\/delete-account$/, deleteAccountInfoPage],
@@ -1119,22 +1120,53 @@ async function accountPage() {
       <p class="muted small"><a href="/privacy">Privacy Policy</a> · <a href="/terms">Terms</a> · <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
       <hr style="border:0;border-top:1px solid var(--border);margin:24px 0">
       <h2 style="font-size:18px">Delete account</h2>
-      <p class="muted small">This permanently deletes your account, email, comments, votes and saved deals. Deals and store links you posted stay up for the community, credited to "deleted user". This can't be undone.</p>
+      <p class="muted small">Permanently delete your account and personal data.</p>
+      <a class="btn btn-danger" href="/account/delete">Delete account…</a>
+    </div>`,
+  );
+}
+
+const DELETE_PHRASE = 'DELETE MY ACCOUNT';
+
+async function deleteAccountPage() {
+  if (!state.user) return goLogin();
+  const u = state.user;
+  setPage(
+    'Delete account',
+    html`<div class="panel narrow"><h1 style="margin-top:0">Delete your account</h1>
+      <p><a href="/account">← Back to your account</a></p>
+      <p><strong>This permanently deletes @${u.handle}</strong>: your email, password and sign-in links, comments, votes and saved deals. Deals and store links you posted stay up for the community, credited to "deleted user". <strong>This can't be undone</strong>, and the account can't be recovered.</p>
+      ${u.role === 'admin' ? html`<p class="form-error">Admin accounts can't be deleted. Ask another admin to remove your admin role first.</p>` : ''}
       <form id="delete-form">
         <div class="form-error" hidden></div>
-        <div class="field"><label for="d-confirm">Type your username <strong>${u.handle}</strong> to confirm</label>
+        <label class="field" style="display:flex;gap:8px;align-items:flex-start"><input type="checkbox" name="ack" style="width:auto;margin-top:4px">
+          <span>I understand my account and personal data will be permanently deleted and can't be restored.</span></label>
+        <div class="field"><label for="d-confirm">Type your username <strong>${u.handle}</strong></label>
           <input id="d-confirm" name="confirm" autocomplete="off" autocapitalize="none" spellcheck="false" required></div>
-        <button class="btn btn-danger">Delete my account</button>
+        <div class="field"><label for="d-phrase">Type <strong>${DELETE_PHRASE}</strong></label>
+          <input id="d-phrase" name="phrase" autocomplete="off" spellcheck="false" required></div>
+        ${u.hasPassword ? html`<div class="field"><label for="d-pw">Your password</label>
+          <input id="d-pw" name="password" type="password" autocomplete="current-password" required></div>` : ''}
+        <p class="actions"><a class="btn" href="/account">Cancel</a><button class="btn btn-danger" disabled>Permanently delete my account</button></p>
       </form>
     </div>`,
   );
   const form = $('#delete-form');
+  const btn = $('button', form);
+  const ready = () =>
+    form.ack.checked &&
+    form.confirm.value.trim().toLowerCase() === u.handle.toLowerCase() &&
+    form.phrase.value.trim().toUpperCase() === DELETE_PHRASE &&
+    (!form.password || form.password.value.length > 0);
+  form.addEventListener('input', () => (btn.disabled = !ready()));
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
+    if (!ready()) return;
     const errBox = $('.form-error', form);
     errBox.hidden = true;
+    btn.disabled = true;
     try {
-      await api('/api/me', { method: 'DELETE', body: { confirm: form.confirm.value.trim() } });
+      await api('/api/me', { method: 'DELETE', body: { confirm: form.confirm.value.trim(), phrase: form.phrase.value.trim(), password: form.password?.value || '' } });
       track('delete_account');
       state.user = null;
       renderChrome();
@@ -1143,6 +1175,7 @@ async function accountPage() {
     } catch (err) {
       errBox.hidden = false;
       errBox.textContent = err.message;
+      btn.disabled = !ready();
     }
   });
 }
@@ -1224,7 +1257,7 @@ async function deleteAccountInfoPage() {
     <p>You can delete your ShareDeals account and its data at any time, on the website or in the Android app:</p>
     <ol>
       <li>Sign in, then open <a href="/account"><strong>Your account</strong></a>. In the app, tap <strong>Account</strong> in the bottom bar.</li>
-      <li>Under <strong>Delete account</strong>, type your username and tap <strong>Delete my account</strong>.</li>
+      <li>Under <strong>Delete account</strong>, tap <strong>Delete account…</strong>. On the next page, confirm by ticking the box and typing your username, <strong>DELETE MY ACCOUNT</strong> and your password, then tap <strong>Permanently delete my account</strong>.</li>
     </ol>
     <p><strong>Deleted straight away:</strong> your email address, password, Google/Facebook sign-in links, sessions, comments, votes, saved deals, viewing history and reports.</p>
     <p><strong>Kept:</strong> deals and store links you posted stay visible for the community, credited to an anonymous "deleted user", with nothing linking them to you. Security logs are kept for a limited time.</p>

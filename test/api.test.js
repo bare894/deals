@@ -260,9 +260,12 @@ test('end-to-end: auth, submit, dedup, vote, comment, bookmark, moderation', asy
     await leaver.post(`/api/deals/${id}/comments`, { body: 'bye' });
     await leaver.put(`/api/deals/${id}/bookmark`);
 
-    assert.equal((await leaver.del('/api/me', { confirm: 'wrong' })).status, 400);
-    assert.equal((await admin.del('/api/me', { confirm: 'admin' })).status, 403, 'admins must be demoted first');
-    const del = await leaver.del('/api/me', { confirm: 'LEAVER' });
+    const phrase = 'delete my account';
+    assert.equal((await leaver.del('/api/me', { confirm: 'wrong', phrase, password: 'password123' })).status, 400);
+    assert.equal((await leaver.del('/api/me', { confirm: 'LEAVER', password: 'password123' })).status, 400, 'phrase required');
+    assert.equal((await leaver.del('/api/me', { confirm: 'LEAVER', phrase, password: 'nope' })).status, 401, 'password required');
+    assert.equal((await admin.del('/api/me', { confirm: 'admin', phrase })).status, 403, 'admins must be demoted first');
+    const del = await leaver.del('/api/me', { confirm: 'LEAVER', phrase, password: 'password123' });
     assert.equal(del.status, 200, JSON.stringify(del.data));
 
     const after = (await anon.get(`/api/deals/${id}`)).data.deal;

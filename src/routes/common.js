@@ -18,7 +18,7 @@ export const isMod = (user) => Boolean(user && ROLE_RANK[user.role] >= ROLE_RANK
 export const REPORT_REASONS = ['spam', 'expired', 'wrong_price', 'duplicate', 'offensive', 'other'];
 
 export function publicUser(u) {
-  return u ? { id: u.id, handle: u.handle, email: u.email, role: u.role, status: u.status } : null;
+  return u ? { id: u.id, handle: u.handle, email: u.email, role: u.role, status: u.status, hasPassword: Boolean(u.has_password) } : null;
 }
 
 /**
