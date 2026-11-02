@@ -215,7 +215,7 @@ npm run make-admin -- --email you@example.com --handle yourname [--password '…
 - **Account deletion** (a Play requirement): `DELETE /api/me` (confirm by typing your username), the Account page, and the public `/delete-account` page.
   - It anonymizes the user row (`status = 'deleted'`) and deletes their email, sign-ins, sessions, comments, votes, saved deals, views and reports. Deal scores are adjusted for the removed votes.
   - Deals and offers they posted stay up. Admins must be demoted first.
-- **Legal pages:** `/privacy` and `/terms` (`CONTACT_EMAIL` in `public/app.js` is `support@sharedeals.in`; make sure that mailbox exists). Have a lawyer review both before launch.
+- **Legal pages:** `/privacy` and `/terms` (`CONTACT_EMAIL` in `public/app.js` is `info@sharedeals.in`; make sure that mailbox exists). Have a lawyer review both before launch.
 - **App Links:** `/.well-known/assetlinks.json` is built from `ANDROID_CERT_SHA256`. The manifest verifies `www.sharedeals.in` and the Railway host for paths starting `/deals`.
 - **Edge-to-edge:** the header pads by `env(safe-area-inset-top)`; the tab bar already used the bottom inset.
 - **Assets:** launcher icons (adaptive, round, legacy and monochrome), splash screens, and Play listing images in `mobile/store/`.

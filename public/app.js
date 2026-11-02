@@ -445,7 +445,7 @@ const native = window.Capacitor?.isNativePlatform?.() ? window.Capacitor : null;
 const nativeCall = (plugin, method, options = {}) => native.nativePromise(plugin, method, options);
 const nativeListen = (plugin, eventName, cb) => native.nativeCallback(plugin, 'addListener', { eventName }, cb);
 const APP_SCHEME = 'in.sharedeals.app';
-const CONTACT_EMAIL = 'support@sharedeals.in';
+const CONTACT_EMAIL = 'info@sharedeals.in';
 
 const b64url = (bytes) => btoa(String.fromCharCode(...new Uint8Array(bytes))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 
@@ -1153,7 +1153,7 @@ const legalPage = (title, updated, body) =>
 async function privacyPage() {
   legalPage(
     'Privacy Policy',
-    '9 October 2026',
+    '2 November 2026',
     html`
     <p>ShareDeals.in ("ShareDeals", "we") is a community site and Android app where people in India share and discuss deals from online stores. This policy explains what we collect and why, in line with India's Digital Personal Data Protection Act, 2023.</p>
     <h2>What we collect</h2>
@@ -1193,7 +1193,7 @@ async function privacyPage() {
 async function termsPage() {
   legalPage(
     'Terms of Use',
-    '9 October 2026',
+    '2 November 2026',
     html`
     <p>By using ShareDeals.in or the ShareDeals app, you agree to these terms.</p>
     <h2>Your account</h2>
@@ -1219,7 +1219,7 @@ async function termsPage() {
 async function deleteAccountInfoPage() {
   legalPage(
     'Delete your ShareDeals account',
-    '9 October 2026',
+    '2 November 2026',
     html`
     <p>You can delete your ShareDeals account and its data at any time, on the website or in the Android app:</p>
     <ol>
