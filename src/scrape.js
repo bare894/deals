@@ -229,13 +229,13 @@ const MRP_PATTERNS = [
   /"(?:mrp|MRP|maximumRetailPrice|maxRetailPrice|listPrice|list_price|originalPrice|original_price|strikeOffPrice|strikethroughPrice|wasPrice)"\s*:\s*(?:\{[^{}]{0,80}?"(?:value|amount|decimalValue)"\s*:\s*)?"?([\d,]+(?:\.\d{1,2})?)/g,
 ];
 
-/** First plausible MRP: above the selling price, and not more than 20× it (so not another product's price). */
+/** First plausible MRP: at or above the selling price, and not more than 20× it (so not another product's price). */
 export function findMrp(html, price) {
   for (const re of MRP_PATTERNS) {
     for (const m of html.matchAll(re)) {
       const v = amount(m[1]);
       if (v == null || v <= 0) continue;
-      if (price == null || (v > price && v <= price * 20)) return v;
+      if (price == null || (v >= price && v <= price * 20)) return v;
     }
   }
   return null;
@@ -334,7 +334,7 @@ export function extractDealFields(html, pageUrl) {
   }
   price ??= parsePrice(meta['product:price:amount'] ?? meta['og:price:amount'] ?? meta['product:sale_price:amount'] ?? meta.price) ?? amazon?.price ?? null;
   fullPrice ??= parsePrice(meta['product:original_price:amount'] ?? meta['product:retail_price:amount']);
-  if (fullPrice != null && price != null && fullPrice <= price) fullPrice = null;
+  if (fullPrice != null && price != null && fullPrice < price) fullPrice = null;
   fullPrice ??= findMrp(html, price);
 
   const productCategory = [].concat(product?.category ?? []).map((c) => (typeof c === 'object' ? c?.name : c)).filter(Boolean).map(String);

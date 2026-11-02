@@ -49,7 +49,8 @@ chrome.action.onClicked.addListener(async (tab) => {
 
   let snapshot = null;
   try {
-    const [res] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: snapshotPage });
+    await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['snapshot.js'] });
+    const [res] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: () => snapshotPage() });
     snapshot = res?.result || null;
   } catch {
     // Pages Chrome won't let extensions read (Web Store, PDFs …): the server fetches it instead.
@@ -80,44 +81,93 @@ function handOver(tabId, snapshot) {
   setTimeout(() => chrome.tabs.onUpdated.removeListener(onUpdated), 60_000);
 }
 
-/**
- * Runs inside the product page. Returns the parts of its markup the server's extractor reads
- * (meta tags, JSON-LD, Amazon's buy box and breadcrumbs, visible MRP labels, and the price
- * fields of embedded app state) rather than the whole page, which can be several MB.
- * Must be self-contained: Chrome serializes it into the page.
- */
-function snapshotPage() {
-  const parts = [];
-  const add = (s) => s && parts.push(s.length > 60_000 ? s.slice(0, 60_000) : s);
-  const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+// ------------------------------------------------------------ one-click posting (thumbs.js)
 
-  add(`<title>${esc(document.title)}</title>`);
-  for (const el of document.querySelectorAll('meta, script[type="application/ld+json"]')) add(el.outerHTML);
+const STORE_NAMES = { 'amazon.in': 'Amazon', 'flipkart.com': 'Flipkart', 'myntra.com': 'Myntra' };
 
-  // Amazon.in has no JSON-LD: title, image, price box and breadcrumbs live in these elements.
-  for (const sel of ['#productTitle', '#landingImage', '#corePriceDisplay_desktop_feature_div', '#corePrice_feature_div', '#apex_desktop', '#wayfinding-breadcrumbs_feature_div']) {
-    add(document.querySelector(sel)?.outerHTML);
-  }
-  [...document.querySelectorAll('[class*="breadcrumb" i], [aria-label*="breadcrumb" i]')].slice(0, 3).forEach((el) => add(el.outerHTML));
-
-  // Visible "MRP ₹…" labels, with enough surrounding markup to include the amount.
-  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-  for (let n = walker.nextNode(), found = 0; n && found < 5; n = walker.nextNode()) {
-    if (/M\.?\s?R\.?\s?P/.test(n.nodeValue)) {
-      const box = n.parentElement?.parentElement || n.parentElement;
-      if (box) add(box.outerHTML.slice(0, 3000)), found++;
-    }
-  }
-
-  // Embedded app state (Flipkart, Myntra, AJIO, Meesho …): just the text around price keys.
-  for (const s of document.querySelectorAll('script:not([src])')) {
-    const t = s.textContent || '';
-    let hits = 0;
-    for (const m of t.matchAll(/"(?:mrp|MRP|maximumRetailPrice|listPrice|originalPrice|original_price|strikeOffPrice|wasPrice)"\s*:/g)) {
-      add(t.slice(Math.max(0, m.index - 300), m.index + 300));
-      if (++hits >= 5) break;
-    }
-  }
-
-  return { html: parts.join('\n').slice(0, 900_000) };
+async function api(base, path, body) {
+  const res = await fetch(`${base}${path}`, {
+    method: body ? 'POST' : 'GET',
+    credentials: 'include',
+    headers: body ? { 'content-type': 'application/json' } : {},
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw Object.assign(new Error(data.error || `Request failed (${res.status})`), { status: res.status, data });
+  return data;
 }
+
+function notify(title, message, link) {
+  const id = `sd-${Date.now()}`;
+  chrome.notifications.create(id, { type: 'basic', iconUrl: 'icon128.png', title, message });
+  if (link) notifyLinks.set(id, link);
+}
+const notifyLinks = new Map();
+chrome.notifications.onClicked.addListener((id) => {
+  const link = notifyLinks.get(id);
+  if (link) chrome.tabs.create({ url: link });
+  chrome.notifications.clear(id);
+});
+
+/**
+ * Posts the deal straight away, with what the server reads from the product page and the
+ * thumbnail filling any gaps. Same product already on ShareDeals: the link is added to that deal.
+ */
+async function quickPost({ url, card, html }) {
+  const base = await siteBase();
+  let pre;
+  try {
+    pre = await api(base, '/api/deals/prefill', { url, html });
+  } catch (err) {
+    if (err.status === 401) {
+      chrome.tabs.create({ url: `${base}/login` });
+      return { ok: false, message: 'Sign in to ShareDeals, then try again.' };
+    }
+    if (err.data?.duplicate) return { ok: false, message: `Already posted: ${err.data.duplicate.title}` };
+    throw err;
+  }
+  const f = pre.fields || {};
+  const host = new URL(pre.url || url).hostname.replace(/^www\./, '');
+  const body = {
+    url: pre.url || url,
+    title: f.title || card.title,
+    imageUrl: f.imageUrl || card.imageUrl,
+    price: f.price ?? card.price,
+    fullPrice: f.fullPrice ?? card.fullPrice,
+    store: f.store || STORE_NAMES[host] || host,
+    categoryId: f.categoryId,
+    gtin: f.gtin,
+    mpn: f.mpn,
+  };
+  if (body.fullPrice != null && body.price != null && body.fullPrice < body.price) body.fullPrice = null;
+  if (!body.categoryId) {
+    const { categories = [] } = await api(base, '/api/meta');
+    body.categoryId = (categories.find((c) => c.name === 'Other') || categories[categories.length - 1])?.id;
+  }
+
+  const attach = async (deal) => {
+    await api(base, `/api/deals/${deal.id}/offers`, body);
+    return { ok: true, message: `Added your ${body.store} link to “${deal.title}”`, link: `${base}/deals/${deal.id}` };
+  };
+  const high = (pre.matches || []).find((m) => m.confidence === 'high' && !m.storeListed);
+  if (high) return attach(high.deal);
+  try {
+    const { deal } = await api(base, '/api/deals', { ...body, confirmNew: false });
+    return { ok: true, message: `Posted “${deal.title}”`, link: `${base}/deals/${deal.id}` };
+  } catch (err) {
+    const match = err.data?.matches?.find((m) => !m.storeListed);
+    if (match) return attach(match.deal);
+    throw err;
+  }
+}
+
+chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
+  if (msg?.type !== 'sharedeals:quickPost') return;
+  quickPost(msg)
+    .catch((err) => ({ ok: false, message: err.message || 'Could not post this deal' }))
+    .then((res) => {
+      notify(res.ok ? 'Deal posted' : 'Not posted', res.message, res.link);
+      reply(res);
+    });
+  return true; // reply is async
+});

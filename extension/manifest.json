@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ShareDeals \u2014 Post this deal",
-  "version": "1.1.3",
+  "version": "1.2.0",
   "description": "Post the product you're viewing on Amazon, Flipkart, Myntra and other approved stores to ShareDeals.in, with the details filled in.",
   "action": {
     "default_title": "Post this page to ShareDeals",
@@ -25,7 +25,8 @@
   "permissions": [
     "activeTab",
     "scripting",
-    "storage"
+    "storage",
+    "notifications"
   ],
   "host_permissions": [
     "https://sharedeals.in/*",
@@ -33,5 +34,31 @@
     "https://*.up.railway.app/*",
     "http://localhost/*",
     "http://127.0.0.1/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.amazon.in/*",
+        "https://www.flipkart.com/*",
+        "https://www.myntra.com/*"
+      ],
+      "js": [
+        "snapshot.js",
+        "thumbs.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "icon32.png"
+      ],
+      "matches": [
+        "https://www.amazon.in/*",
+        "https://www.flipkart.com/*",
+        "https://www.myntra.com/*"
+      ]
+    }
   ]
 }

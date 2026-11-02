@@ -93,7 +93,7 @@ export function reportModal(type, id) {
 export function priceBlock(d, { mrpLabel = false } = {}) {
   return html`<div class="prices">
     <span class="price">${money(d.price)}</span>
-    ${d.fullPrice ? html`${mrpLabel ? html`<span class="muted small">MRP</span>` : ''}<span class="was">${money(d.fullPrice)}</span>` : ''}
+    ${d.fullPrice > d.price ? html`${mrpLabel ? html`<span class="muted small">MRP</span>` : ''}<span class="was">${money(d.fullPrice)}</span>` : ''}
   </div>`;
 }
 

@@ -164,9 +164,12 @@ export function createApp({
   }
 
   // CSRF defense: cross-site forms can't send JSON, and browsers send Origin on cross-site POSTs.
+  // Browser extensions are let through: a JSON POST from one needs either access to this site
+  // (granted by the user, as for the ShareDeals extension's one-click posting) or a CORS
+  // preflight, which we never approve.
   function checkCsrf(req) {
     const origin = req.headers.origin;
-    if (origin) {
+    if (origin && !/^(chrome|moz)-extension:\/\//.test(origin)) {
       let originHost = null;
       try {
         originHost = new URL(origin).host;

@@ -91,7 +91,7 @@ function offerRow(o, { lowest }) {
     </div>
     <div class="offer-price">
       <span class="price">${money(o.price)}</span>
-      ${o.fullPrice ? html`<span class="was">${money(o.fullPrice)}</span>` : ''}
+      ${o.fullPrice > o.price ? html`<span class="was">${money(o.fullPrice)}</span>` : ''}
       ${o.discountPct ? html`<span class="small discount">${o.discountPct}% off</span>` : ''}
     </div>
     <div class="offer-meta">
