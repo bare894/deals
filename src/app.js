@@ -147,16 +147,26 @@ export function createApp({
     return html.replace('<!--OG-->', tags);
   }
 
-  async function serveStatic(res, pathname) {
+  async function serveStatic(req, res, pathname) {
     const file = path.normalize(path.join(publicDir, decodeURIComponent(pathname)));
     if (!file.startsWith(publicDir + path.sep)) return false;
     try {
       const s = await stat(file);
       if (!s.isFile()) return false;
-      send(res, 200, await readFile(file), {
+      // App code is revalidated on every load so a deploy shows up at once (a 304 when unchanged).
+      const code = /\.(js|css|html|webmanifest)$/.test(file);
+      const etag = `"${s.size.toString(36)}-${Math.floor(s.mtimeMs).toString(36)}"`;
+      const headers = {
         'content-type': MIME[path.extname(file)] || 'application/octet-stream',
-        'cache-control': process.env.NODE_ENV === 'production' ? 'public, max-age=3600' : 'no-cache',
-      });
+        'cache-control': process.env.NODE_ENV === 'production' && !code ? 'public, max-age=3600' : 'no-cache',
+        etag,
+      };
+      if (req.headers['if-none-match'] === etag) {
+        res.writeHead(304, { etag, 'cache-control': headers['cache-control'] });
+        res.end();
+        return true;
+      }
+      send(res, 200, await readFile(file), headers);
       return true;
     } catch {
       return false;
@@ -225,7 +235,7 @@ export function createApp({
         return send(res, 200, placeholderSvg(t, hue), { 'content-type': 'image/svg+xml', 'cache-control': 'public, max-age=86400' });
       }
 
-      if (pathname !== '/' && (await serveStatic(res, pathname))) return;
+      if (pathname !== '/' && (await serveStatic(req, res, pathname))) return;
 
       // SPA fallback (history routing); deal pages get OG tags, merged deals redirect.
       const dealMatch = pathname.match(/^\/deals\/(\d{1,9})$/);
