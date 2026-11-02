@@ -178,7 +178,7 @@ function findProduct(html) {
   for (const [, json] of html.matchAll(/<script[^>]*type\s*=\s*["']?application\/ld\+json["']?[^>]*>([\s\S]*?)<\/script>/gi)) {
     try {
       for (const node of walkJsonLd(JSON.parse(json.trim()))) {
-        if (hasType(node, 'Product') || hasType(node, 'ProductGroup')) return node;
+        if (hasType(node, 'Product') || hasType(node, 'ProductGroup') || hasType(node, 'Book')) return node;
       }
     } catch {
       /* malformed JSON-LD is common; ignore */
@@ -246,7 +246,12 @@ function amazonFields(html) {
   const title = html.match(/id="productTitle"[^>]*>([^<]+)</);
   const img = html.match(/<img[^>]*id="landingImage"[^>]*>/);
   const crumbs = html.match(/id="wayfinding-breadcrumbs_feature_div"([\s\S]{0,6000}?)<\/ul>/);
+  // Book pages show the format under the title ("Paperback – 1 June 2024") and list an ISBN;
+  // their breadcrumbs are often missing.
+  const subtitle = html.match(/id="productSubtitle"[^>]*>([\s\S]{0,300}?)<\/span>/);
+  const isBook = /\b(paperback|hardcover|hardback|kindle edition|board book|mass market)\b/i.test(subtitle ? subtitle[1] : '') || /ISBN-1[03]/.test(html);
   return {
+    isBook,
     price: priceToPay ? amount(priceToPay[1]) : null,
     title: title ? decodeEntities(title[1]).trim() : null,
     image: img ? attr(img[0], 'data-old-hires') || attr(img[0], 'src') : null,
@@ -272,6 +277,9 @@ function jsonLdBreadcrumbs(html) {
 // Site categories (see DEFAULT_CATEGORIES in db.js). Checked in order, so specific beats generic
 // ("Smart Watches" → Electronics before "Watches" → Fashion).
 const CATEGORY_RULES = [
+  // First, so "Children's Books" and "Kindle eBooks" aren't taken by Toys & Kids / Electronics.
+  // "Book shelf/rack/stand" are furniture; "notebook"/"Facebook" don't match the word boundary.
+  ['Books', /\b(e-?books?|books?(?!\s*(shel|rack|stand|end|case|light|mark))|novels?|paperbacks?|hardcovers?|comics?|graphic novels?|textbooks?)\b/i],
   ['Mobiles', /\b(mobiles?|smart ?phones?|mobile phones?|handsets?|basic mobiles?)\b/i],
   ['Electronics', /\bsmart ?(watch|watches|band)\b/i],
   ['Gaming', /\b(video games?|gaming|play ?station|ps[45]|xbox|nintendo|consoles?)\b/i],
@@ -339,7 +347,10 @@ export function extractDealFields(html, pageUrl) {
 
   const productCategory = [].concat(product?.category ?? []).map((c) => (typeof c === 'object' ? c?.name : c)).filter(Boolean).map(String);
   const category = guessCategory(
-    [...jsonLdBreadcrumbs(html), ...(amazon?.breadcrumbs || []), ...productCategory, meta['product:category'] || ''].filter(Boolean),
+    [
+      ...jsonLdBreadcrumbs(html), ...(amazon?.breadcrumbs || []), ...productCategory, meta['product:category'] || '',
+      hasType(product || {}, 'Book') || amazon?.isBook || meta['og:type'] === 'books.book' ? 'Books' : '',
+    ].filter(Boolean),
     title || '',
   );
 

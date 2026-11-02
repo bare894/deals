@@ -167,6 +167,10 @@ test('category: most specific breadcrumb wins, then the title', () => {
   assert.equal(guessCategory(['Home & Kitchen', 'Kitchen & Home Appliances', 'Mixer Grinders']), 'Home & Kitchen');
   assert.equal(guessCategory([], 'Puma Men Softride Running Shoes'), 'Fashion');
   assert.equal(guessCategory([], 'Something unrecognisable'), null);
+  assert.equal(guessCategory(['Books', "Children's Books", 'Picture Books']), 'Books');
+  assert.equal(guessCategory(['Kindle Store', 'Kindle eBooks', 'Romance']), 'Books');
+  assert.equal(guessCategory(['Home & Kitchen', 'Furniture', 'Book Shelves']), 'Home & Kitchen');
+  assert.equal(guessCategory(['Computers & Accessories', 'Laptops', 'Notebooks']), 'Electronics');
 });
 
 test('Amazon.in pages: price, MRP, title, image and category without JSON-LD', () => {

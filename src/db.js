@@ -357,7 +357,7 @@ export function tx(db, fn) {
 
 export const DEFAULT_CATEGORIES = [
   'Mobiles', 'Electronics', 'Fashion', 'Beauty & Personal Care', 'Home & Kitchen', 'Grocery',
-  'Travel', 'Gaming', 'Toys & Kids', 'Apps & Services', 'Other',
+  'Travel', 'Gaming', 'Toys & Kids', 'Books', 'Apps & Services', 'Other',
 ];
 
 export function slugify(name) {

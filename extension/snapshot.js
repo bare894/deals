@@ -22,8 +22,8 @@ async function snapshotPage(href = location.href) {
     add(`<title>${esc(doc.title)}</title>`);
     for (const el of doc.querySelectorAll('meta, script[type="application/ld+json"]')) add(el.outerHTML);
 
-    // Amazon.in has no JSON-LD: title, image, price box and breadcrumbs live in these elements.
-    for (const sel of ['#productTitle', '#landingImage', '#corePriceDisplay_desktop_feature_div', '#corePrice_feature_div', '#apex_desktop', '#wayfinding-breadcrumbs_feature_div']) {
+    // Amazon.in has no JSON-LD: title, image, price box, breadcrumbs and a book's format/ISBN live in these elements.
+    for (const sel of ['#productTitle', '#landingImage', '#corePriceDisplay_desktop_feature_div', '#corePrice_feature_div', '#apex_desktop', '#wayfinding-breadcrumbs_feature_div', '#productSubtitle', '#detailBullets_feature_div']) {
       add(doc.querySelector(sel)?.outerHTML);
     }
     [...doc.querySelectorAll('[class*="breadcrumb" i], [aria-label*="breadcrumb" i]')].slice(0, 3).forEach((el) => add(el.outerHTML));
