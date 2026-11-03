@@ -42,7 +42,12 @@ Env vars: `PORT` (3000), `DATABASE_URL` (Postgres; unset = local PGlite), `PG_PO
 | §12 | Comments | Public read, sign-in to post, report button, mod removal |
 | §13 | Wishlist `/saved` | Removed deals stay visible as "No longer available". Also has a "My posts" tab |
 | §14 | Share | Native share sheet (Web Share API) or copy link; server-rendered OG tags on `/deals/:id` for rich unfurls |
-| §15 | Admin Mode `/admin` | Report queue, deal/comment removal + restore (soft delete), users (suspend/ban/reinstate, promote/demote), categories, audit log |
+| §15 | Admin Mode `/admin` | Report queue, deal/offer/comment removal + restore (soft delete), duplicates and merge, users (suspend/ban/reinstate, promote/demote), categories, feedback, audit log |
+| §9.4–9.5, §10.3 | Approved stores, multi-store offers, same-product matching | See PROJECT_NOTES §6 |
+| §13a | Alerts `/alerts` + Android push | Saved-search phrases (hourly job) and interest-based deal alerts; needs `FIREBASE_SERVICE_ACCOUNT` |
+| §15a | Feedback `/feedback` | Side tab on every page; Admin Mode → Feedback |
+| §17a | Accounts | Google/Facebook sign-in, forgot password (ZeptoMail), change password, account deletion |
+| §17b | SEO, speed, analytics | Server-rendered pages, sitemap, JSON-LD, IndexNow, image/compression work, GA4 |
 | §17 | NFRs | Server-side role checks on every endpoint, per-user rate limits, scrypt passwords, HttpOnly session cookies, CSRF defenses, strict CSP, SSRF-guarded fetcher |
 
 ## Decisions on the PRD's open questions
@@ -73,11 +78,9 @@ On any approved store's product page, click the toolbar button. A popup opens th
 
 The extension posts to `https://www.sharedeals.in` by default; change this on its Options page (for example `http://localhost:3000` for development). Handing the page details to the popup needs the site's address in `host_permissions` in `extension/manifest.json`. sharedeals.in, `*.up.railway.app` and localhost are already listed. For any other address the extension still works, but the server has to fetch the page itself.
 
-## Not built: native iOS/Android apps (PRD Phase 4)
+## Android app (PRD Phase 4)
 
-The web client is responsive and mobile-first, with a bottom tab bar and native share sheet. The native apps should be built against this same JSON API (`/api/*`), so all clients share one backend as the PRD requires. Two things are still needed before that:
-- **Token auth for mobile clients.** The API currently uses cookie sessions.
-- **Universal/App Links** for deep linking from shared URLs.
+Built as a Capacitor shell around the live site in `mobile/`; see [mobile/README.md](mobile/README.md). It hasn't yet been run on a device or published to Google Play. iOS is planned.
 
 ## Project layout
 
@@ -100,7 +103,7 @@ test/                node:test suites
 - Rate limiting is in-memory per process; use Redis or similar when running multiple instances.
 - Schema changes go in `MIGRATIONS` in `src/db.js`. They are append-only and applied on boot, under an advisory lock so concurrent instances don't race. Never edit a migration that has shipped.
 - Retailer scraping is best-effort. Amazon.in, Flipkart and Myntra often block bots or render prices with JavaScript, and users then see the manual-entry fallback. Per-retailer parsers or affiliate product APIs would improve the auto-fill rate (PRD §19). Examples are Amazon PA-API and the Flipkart Affiliate API.
-- Users can't yet reset passwords, verify email, or report other user accounts.
+- Users can't yet verify their email or report other user accounts.
 
 ## Deploying on Railway
 

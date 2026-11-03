@@ -35,7 +35,12 @@ src/app.js              request handling: API router, /auth/* (OAuth), static fi
                         server-rendered Open Graph tags on /deals/:id, security headers (CSP)
 src/db.js               Postgres access layer, MIGRATIONS list, tx()/savepoint(), categories
 src/repo.js             deals/offers data access: listings, ranking, matching, merge, remove/restore
-src/routes/*.js         auth, deals, offers, admin, health, common (validation, approved stores)
+src/routes/*.js         auth, deals, offers, admin, feedback, health, common (validation, approved stores)
+src/alerts.js           saved-search alerts and the hourly matching job
+src/push.js             Android push notifications (FCM)
+src/seo.js              server-rendered pages, robots.txt, sitemap.xml, JSON-LD
+src/indexnow.js         IndexNow pings when deals change
+src/mailer.js           email (ZeptoMail API, SMTP fallback)
 src/oauth.js            Google + Facebook sign-in (server-side OAuth code flow)
 src/scrape.js           page fetching (SSRF-guarded) and field extraction (title, image, price, MRP, category)
 src/canonicalize.js     URL canonicalization + product-ID extraction for dedup
@@ -146,7 +151,7 @@ npm run make-admin -- --email you@example.com --handle yourname [--password '…
   - **Going live:** the Google consent screen must be set to "In production", and the Facebook app must be **Live**, with a privacy-policy URL and a data-deletion URL.
 - **Rate limits** live in memory, per process. They're keyed by user, or by IP for sign-in and registration. With more than one replica, each replica counts separately.
 
-## 9. Browser extension (`extension/`, v1.1.3)
+## 9. Browser extension (`extension/`, v1.2.0)
 
 - **Install:** `chrome://extensions` → Developer mode → **Load unpacked** → `extension/`.
 - **Which site:** with nothing set on the Options page, the extension checks `/api/health` on `https://www.sharedeals.in`, then `https://deals-production-1ecf.up.railway.app`, uses the first healthy one, and remembers it for 10 minutes. A saved sharedeals.in address also means automatic. Any other saved address, such as `http://localhost:3000`, is always used as-is.
@@ -194,7 +199,7 @@ npm run make-admin -- --email you@example.com --handle yourname [--password '…
 
 ## 12. Database
 
-- **Schema:** the `MIGRATIONS` array in `src/db.js`. It's append-only and applied on boot inside a transaction with an advisory lock (safe with several replicas), and recorded in `schema_migrations`. **Never edit a shipped migration; add a new one.** The current version is 1.
+- **Schema:** the `MIGRATIONS` array in `src/db.js`. It's append-only and applied on boot inside a transaction with an advisory lock (safe with several replicas), and recorded in `schema_migrations`. **Never edit a shipped migration; add a new one.** The current version is 7.
 - **Data types:**
   - Timestamps are epoch milliseconds in `BIGINT`, and prices are paise in `BIGINT`.
   - `pg` and PGlite are both configured to return `BIGINT` as JS numbers.
@@ -206,7 +211,7 @@ npm run make-admin -- --email you@example.com --handle yourname [--password '…
 
 ## 12a. Android app (`mobile/`)
 
-- **What it is:** a Capacitor 8 shell, app ID `in.sharedeals.app`. It loads the live site (`server.url` in `mobile/capacitor.config.json`, currently the Railway address until `www` works) and adds native Android features through Capacitor's bridge. The site calls the bridge directly via `window.Capacitor.nativePromise` / `nativeCallback`, with no Capacitor JS bundled; search `native` in `public/app.js`.
+- **What it is:** a Capacitor 8 shell, app ID `in.sharedeals.app`. It loads the live site (`server.url` in `mobile/capacitor.config.json`: `https://www.sharedeals.in`) and adds native Android features through Capacitor's bridge. The site calls the bridge directly via `window.Capacitor.nativePromise` / `nativeCallback`, with no Capacitor JS bundled; search `native` in `public/app.js`.
 - **Plugins:** App (back button, `appUrlOpen` / `getLaunchUrl`), Share (share sheet), Browser (Chrome tab for sign-in).
 - **Google/Facebook sign-in:** both refuse to sign in inside WebViews. The app opens `/auth/<provider>/start?app=1&challenge=<sha256(verifier)>` in a Chrome tab.
   - The callback stores a **one-time code** (hashed, expires after 2 minutes, migration 2 `app_login_codes`) and returns `in.sharedeals.app://auth?code=…`.
@@ -228,10 +233,29 @@ npm run make-admin -- --email you@example.com --handle yourname [--password '…
 - **Failing test:** `deal pages render escaped Open Graph tags`. The test expects `₹19.99 (MRP …) on Shop`, but the code renders `₹19.99 on Shop (MRP …)`. Fix the test or the wording.
 - **`public/js/` is an unfinished split-up rewrite of the client.** It has no admin pages and no boot code, and isn't loaded. Either finish it and switch `index.html` over, or delete it. Until then, **client changes go in `public/app.js`**.
 - **No `package-lock.json`:** see §2.
-- **Unfinished launch checklist:** privacy policy page (DPDP Act 2023; must mention GA cookies), data-deletion page (needed for Facebook), and an affiliate disclosure if affiliate links are used.
-- **Not yet built:** password reset and email verification.
+- **Unfinished launch checklist:** legal review of `/privacy` and `/terms` (DPDP Act 2023; must mention GA cookies), and an affiliate disclosure if affiliate links are used.
+- **Not yet built:** email verification.
 - **`mobile/` has no `package-lock.json`** (installed with the same workaround as §2); run `npm install` in `mobile/` on a normal network and commit it.
-- **Before the Android production release:** switch `server.url` to `www`, set `ANDROID_CERT_SHA256`, and get the privacy policy and terms reviewed.
+- **Before the Android production release:** set `ANDROID_CERT_SHA256`, configure Firebase for push, and get the privacy policy and terms reviewed.
 - **Not yet built:** tracking Google and Facebook sign-ins as GA events.
 - **Rate limits** are in memory, per replica (§8).
 - **Dev environment quirk:** on the original development machine, Node couldn't reach the internet (curl and Python could). npm installs were done by a script that downloads registry tarballs and checks their integrity. This doesn't affect Railway.
+
+## 14. Roadmap (planned, not built)
+
+### Downvote reasons
+*Added 2026-11-03. Inspired by Slickdeals' "Why are you downvoting this deal?" prompt.*
+
+When someone downvotes, ask why, with one tap and four choices:
+
+| Choice | What it does |
+|---|---|
+| Expired / can't get this price | Once a few users pick it, the deal is marked expired automatically (threshold to be decided). |
+| Not a good deal | A normal downvote that only affects ranking. |
+| Wrong info | Flags the deal so the poster or a moderator fixes the title or price. |
+| Spam or repost | Sends the deal to the existing moderation queue. |
+
+- Only downvotes ask; upvotes stay one tap. Let people skip the question, which records a plain downvote.
+- Today a downvote is just `value = -1` in `votes` (`src/routes/deals.js`, the `vote-btn down` button in `public/app.js`). Store the reason alongside it.
+- Reuse the existing report reasons (`REPORT_REASONS` in `src/routes/common.js`: `expired`, `wrong_price`, `spam`, `duplicate`) so moderators see these as reports in the same place.
+- To decide: whether "Expired" votes count against the poster's reputation (probably not, since the deal may have been good when posted), and how many "Expired" votes trigger auto-expiry.
