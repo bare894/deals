@@ -5,7 +5,7 @@ import { duplicateLinkError, storeConflictError } from '../repo.js';
 import { extractDealFields } from '../scrape.js';
 import { REPORT_REASONS, isMod, resolveLink, validateDealBody, validateOfferBody } from './common.js';
 
-export function registerDealRoutes({ route, db, repo, rateLimit, scraper, resolveUrl, approvedStores }) {
+export function registerDealRoutes({ route, db, repo, seo, rateLimit, scraper, resolveUrl, approvedStores }) {
   // ------------------------------------------------------------ discovery (§6, §7)
 
   route('GET', '/api/home', async ({ user }) => {
@@ -14,16 +14,19 @@ export function registerDealRoutes({ route, db, repo, rateLimit, scraper, resolv
     return { latest, hot, forYou: fy.items, forYouPersonalized: fy.personalized };
   });
 
-  route('GET', '/api/deals', ({ query, user }) =>
+  route('GET', '/api/deals', async ({ query, user }) =>
     repo.listDeals({
       sort: query.get('sort') === 'hot' ? 'hot' : 'new',
       categorySlug: query.get('category') || null,
+      storeName: query.get('store') ? (await seo.storeBySlug(query.get('store')))?.name ?? '\u0000' : null,
       q: (query.get('q') || '').trim().slice(0, 100) || null,
       page: intParam(query.get('page'), 1, { max: 500 }),
       limit: intParam(query.get('limit'), 20, { max: 50 }),
       user,
     }),
   );
+
+  route('GET', '/api/stores', async () => ({ stores: await seo.stores() }));
 
   // ------------------------------------------------------------ deal detail (§8)
 

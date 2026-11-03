@@ -332,3 +332,8 @@ a.avatar { text-decoration: none; }
   .home-main { display: contents; }
   .home-main > .section:first-child { order: -2; }
 }
+
+/* Server-rendered page content for crawlers; the app replaces it as soon as it loads. */
+.ssr { line-height: 1.6; }
+.ssr ul { padding-left: 20px; }
+.ssr h1 { font-size: 24px; }

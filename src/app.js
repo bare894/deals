@@ -3,8 +3,9 @@ import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { autoPopulate, resolveShortener } from './scrape.js';
 import { SESSION_COOKIE, parseCookies, userForToken } from './auth.js';
-import { HttpError, clientIp, createRouter, escapeHtml, inr, makeRateLimiter, readJson } from './http.js';
+import { HttpError, clientIp, createRouter, escapeHtml, makeRateLimiter, readJson } from './http.js';
 import { createRepo } from './repo.js';
+import { createSeo } from './seo.js';
 import { APPROVED_STORES, ROLE_RANK } from './routes/common.js';
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerDealRoutes } from './routes/deals.js';
@@ -72,7 +73,8 @@ export function createApp({
   const repo = createRepo(db);
   const rateLimit = makeRateLimiter(RATE_LIMITS, rateLimits);
   const oauth = createOAuth({ db, config: oauthConfig, secureCookies, baseUrl: (req) => baseUrl(req), rateLimit, fetchImpl: oauthFetch });
-  const ctx = { route, db, repo, rateLimit, scraper, resolveUrl, secureCookies, oauthProviders: oauth.enabled, approvedStores };
+  const seo = createSeo({ db, repo });
+  const ctx = { route, db, repo, seo, rateLimit, scraper, resolveUrl, secureCookies, oauthProviders: oauth.enabled, approvedStores };
   registerAuthRoutes(ctx);
   registerDealRoutes(ctx);
   registerOfferRoutes(ctx);
@@ -102,52 +104,6 @@ export function createApp({
   async function indexHtml() {
     if (!indexCache || process.env.NODE_ENV !== 'production') indexCache = await readFile(path.join(publicDir, 'index.html'), 'utf8');
     return indexCache;
-  }
-
-  // Server-rendered Open Graph tags so shared deal links unfurl in WhatsApp/Slack/iMessage (§14).
-  async function renderIndex(req, dealId) {
-    let html = await indexHtml();
-    let tags = '';
-    const row = dealId && (await repo.getDealRow(dealId));
-    if (row && row.status === 'active') {
-      const d = repo.serializeDeal(row);
-      const price = d.price === 0 ? 'FREE' : d.price != null ? inr(d.price) : '';
-      const desc = [
-        price && `${price} on ${d.store}`,
-        d.fullPrice ? `(MRP ${inr(d.fullPrice)}${d.discountPct ? `, ${d.discountPct}% off` : ''})` : '',
-        d.offerCount > 1 ? `· compare ${d.offerCount} stores` : '',
-        `· ${d.score >= 0 ? '+' : ''}${d.score} votes`,
-      ]
-        .filter(Boolean)
-        .join(' ');
-      const url = `${baseUrl(req)}/deals/${d.id}`;
-      const imagePath = d.imageUrl || `/img/placeholder.svg?t=${encodeURIComponent(d.title.slice(0, 20))}`;
-      const image = imagePath.startsWith('/') ? `${baseUrl(req)}${imagePath}` : imagePath;
-      tags = [
-        ['og:type', 'product'], ['og:site_name', 'ShareDeals'], ['og:title', d.title], ['og:description', desc], ['og:url', url], ['og:image', image],
-        ['product:price:amount', d.price?.toFixed(2)], ['product:price:currency', 'INR'], ['og:locale', 'en_IN'],
-      ]
-        .map(([p, c]) => `<meta property="${p}" content="${escapeHtml(c)}">`)
-        .concat([
-          '<meta name="twitter:card" content="summary_large_image">',
-          `<link rel="canonical" href="${escapeHtml(url)}">`,
-          // Deep-link hint for the native apps (Phase 4); app ids are placeholders until the apps exist.
-          `<meta property="al:web:url" content="${escapeHtml(url)}">`,
-        ])
-        .join('\n    ');
-      html = html.replace(/<title>[^<]*<\/title>/, `<title>${escapeHtml(d.title)} — ShareDeals</title>`);
-    } else {
-      // Every other page unfurls as the site itself, with the logo card.
-      tags = [
-        ['og:type', 'website'], ['og:site_name', 'ShareDeals'], ['og:title', 'ShareDeals.in — community-vetted deals in India'],
-        ['og:description', 'Find, vote on, and share the best deals from Flipkart, Amazon, Myntra, AJIO, Nykaa, Meesho and more.'],
-        ['og:url', `${baseUrl(req)}/`], ['og:image', `${baseUrl(req)}/img/og-image.png`], ['og:locale', 'en_IN'],
-      ]
-        .map(([p, c]) => `<meta property="${p}" content="${escapeHtml(c)}">`)
-        .concat(['<meta name="twitter:card" content="summary_large_image">'])
-        .join('\n    ');
-    }
-    return html.replace('<!--OG-->', tags);
   }
 
   async function serveStatic(req, res, pathname) {
@@ -240,15 +196,15 @@ export function createApp({
 
       if (pathname !== '/' && (await serveStatic(req, res, pathname))) return;
 
-      // SPA fallback (history routing); deal pages get OG tags, merged deals redirect.
-      const dealMatch = pathname.match(/^\/deals\/(\d{1,9})$/);
-      if (dealMatch) {
-        const merged = (await db.get('SELECT merged_into FROM deals WHERE id = ?', Number(dealMatch[1])))?.merged_into;
-        if (merged) return send(res, 301, '', { location: `/deals/${merged}` });
-      }
-      if (path.extname(pathname) && !dealMatch) return send(res, 404, 'Not found', { 'content-type': 'text/plain' });
-      const html = await renderIndex(req, dealMatch ? Number(dealMatch[1]) : null);
-      return send(res, 200, html, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-cache' });
+      if (pathname === '/robots.txt') return send(res, 200, seo.robots(baseUrl(req)), { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'public, max-age=3600' });
+      if (pathname === '/sitemap.xml') return send(res, 200, await seo.sitemap(baseUrl(req)), { 'content-type': 'application/xml; charset=utf-8', 'cache-control': 'public, max-age=900' });
+      if (path.extname(pathname)) return send(res, 404, 'Not found', { 'content-type': 'text/plain' });
+
+      // SPA fallback (history routing), with each page's head and main content rendered for
+      // crawlers and link previews (src/seo.js). Merged deals and old URLs redirect.
+      const p = await seo.page(baseUrl(req), pathname, url.searchParams);
+      if (p.redirect) return send(res, p.status, '', { location: p.redirect });
+      return send(res, p.status, seo.render(await indexHtml(), baseUrl(req), p), { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-cache' });
     } catch (err) {
       if (err instanceof HttpError) return send(res, err.status, { error: err.message, ...err.extra });
       // Malformed or out-of-range ids in the URL (Postgres: invalid_text_representation, numeric_value_out_of_range).

@@ -105,12 +105,16 @@ export function createRepo(db) {
     return deals;
   }
 
-  async function listDeals({ sort = 'new', categorySlug, q, page = 1, limit = 20, user }) {
+  async function listDeals({ sort = 'new', categorySlug, storeName, q, page = 1, limit = 20, user }) {
     const where = ["d.status = 'active'"];
     const params = [];
     if (categorySlug) {
       where.push('c.slug = ?');
       params.push(categorySlug);
+    }
+    if (storeName) {
+      where.push("EXISTS (SELECT 1 FROM offers o WHERE o.deal_id = d.id AND o.status = 'active' AND o.store = ?)");
+      params.push(storeName);
     }
     if (q) {
       const like = `%${escapeLike(q)}%`;

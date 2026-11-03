@@ -332,3 +332,39 @@ test('deal pages render escaped Open Graph tags; SPA fallback works', async () =
   assert.equal((await fetch(`${base}/../package.json`)).status, 404);
   assert.equal((await fetch(`${base}/%2e%2e/package.json`)).status, 404);
 });
+
+test('SEO: robots, sitemap, clean URLs, real status codes, structured data', async () => {
+  const c = client();
+  await c.login('voter');
+  const r = await c.post('/api/deals', dealBody('https://seo.com/x', { title: 'Acme Ultra Kettle 1.5L' }));
+  const id = r.data.deal.id;
+  const get = (p) => fetch(base + p, { redirect: 'manual' });
+
+  const robots = await (await get('/robots.txt')).text();
+  assert.match(robots, /Disallow: \/admin/);
+  assert.match(robots, /Sitemap: .*\/sitemap\.xml/);
+  const sitemap = await (await get('/sitemap.xml')).text();
+  assert.match(sitemap, new RegExp(`/deals/${id}/acme-ultra-kettle-1-5l</loc>`));
+
+  const bare = await get(`/deals/${id}`);
+  assert.equal(bare.status, 301);
+  assert.equal(bare.headers.get('location'), `/deals/${id}/acme-ultra-kettle-1-5l`);
+  const page = await (await get(`/deals/${id}/acme-ultra-kettle-1-5l`)).text();
+  assert.match(page, /"@type":"Product"/);
+  assert.match(page, /"priceCurrency":"INR"/);
+  assert.match(page, /<h1>Acme Ultra Kettle 1\.5L<\/h1>/, 'content is in the HTML for crawlers');
+  assert.match(page, /<link rel="canonical" href="[^"]*\/deals\/\d+\/acme-ultra-kettle-1-5l">/);
+
+  assert.equal((await get('/deals/999999')).status, 404);
+  assert.equal((await get('/no/such/page')).status, 404);
+  assert.match(await (await get('/admin')).text(), /noindex/);
+
+  const old = await get('/deals?category=electronics');
+  assert.equal(old.status, 301);
+  assert.equal(old.headers.get('location'), '/c/electronics');
+  const cat = await (await get('/c/electronics')).text();
+  assert.match(cat, /<title>Electronics deals today/);
+  assert.match(cat, /"@type":"BreadcrumbList"/);
+  assert.equal((await get('/c/nope')).status, 404);
+  assert.match(await (await get('/')).text(), /"@type":"WebSite"/);
+});

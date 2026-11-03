@@ -436,7 +436,9 @@ function markActiveNav() {
 const ROUTES = [
   [/^\/$/, homePage],
   [/^\/deals$/, listingsPage],
-  [/^\/deals\/(\d+)$/, detailPage],
+  [/^\/c\/([a-z0-9-]+)$/, (ctx) => listingsPage({ ...ctx, categorySlug: ctx.params[0] })],
+  [/^\/store\/([a-z0-9-]+)$/, (ctx) => listingsPage({ ...ctx, storeSlug: ctx.params[0] })],
+  [/^\/deals\/(\d+)(?:\/(?!edit$)[a-z0-9-]+)?$/, detailPage],
   [/^\/deals\/(\d+)\/edit$/, editPage],
   [/^\/submit$/, submitPage],
   [/^\/saved$/, savedPage],
@@ -578,7 +580,7 @@ async function homePage({ alive }) {
     html`
       <nav class="chips" aria-label="Categories">
         <a class="chip active" href="/deals">All</a>
-        ${state.categories.map((c) => html`<a class="chip" href="/deals?category=${c.slug}">${c.name}</a>`)}
+        ${state.categories.map((c) => html`<a class="chip" href="/c/${c.slug}">${c.name}</a>`)}
       </nav>
       <div class="home-layout">
         <div class="home-main">
@@ -609,18 +611,23 @@ async function homePage({ alive }) {
 
 // ============================================================ pages: listings (§7)
 
-async function listingsPage({ query, alive }) {
+async function listingsPage({ query, alive, categorySlug = '', storeSlug = '' }) {
   const sort = query.get('sort') === 'hot' ? 'hot' : 'new';
-  const category = query.get('category') || '';
+  const category = categorySlug || query.get('category') || '';
   const q = query.get('q') || '';
   const cat = state.categories.find((c) => c.slug === category);
+  const store = storeSlug ? (await api('/api/stores')).stores.find((s) => s.slug === storeSlug) : null;
+  if (!alive()) return;
+  if (storeSlug && !store) throw Object.assign(new Error('No live deals from this store right now.'), { status: 404 });
+  // Category and store pages have clean URLs (/c/…, /store/…); sort and search stay in the query.
   const link = (patch) => {
-    const p = new URLSearchParams({ ...(sort === 'hot' ? { sort } : {}), ...(category ? { category } : {}), ...(q ? { q } : {}), ...patch });
-    for (const [k, v] of [...p]) if (!v) p.delete(k);
+    const next = { category, q, sort: sort === 'hot' ? sort : '', ...patch };
+    const p = new URLSearchParams({ ...(next.sort ? { sort: next.sort } : {}), ...(next.q ? { q: next.q } : {}) });
     const s = p.toString();
-    return `/deals${s ? `?${s}` : ''}`;
+    const base = storeSlug && !('category' in patch) ? `/store/${storeSlug}` : next.category ? `/c/${next.category}` : '/deals';
+    return `${base}${s ? `?${s}` : ''}`;
   };
-  const heading = q ? `Results for “${q}”` : cat ? cat.name : sort === 'hot' ? 'Hot Deals' : 'All deals';
+  const heading = q ? `Results for “${q}”` : store ? `${store.name} deals` : cat ? `${cat.name} deals` : sort === 'hot' ? 'Hot Deals' : 'All deals';
   setPage(
     heading,
     html`
@@ -632,7 +639,7 @@ async function listingsPage({ query, alive }) {
         </nav>
       </div>
       <nav class="chips" aria-label="Categories">
-        <a class="chip ${category ? '' : 'active'}" href="${link({ category: '' })}">All</a>
+        <a class="chip ${category || store ? '' : 'active'}" href="${link({ category: '' })}">All</a>
         ${state.categories.map((c) => html`<a class="chip ${c.slug === category ? 'active' : ''}" href="${link({ category: c.slug })}">${c.name}</a>`)}
       </nav>
       <div class="grid" id="feed">${skeletonCards(8)}</div>
@@ -651,6 +658,7 @@ async function listingsPage({ query, alive }) {
     try {
       const params = new URLSearchParams({ sort, page: String(page + 1), limit: '24' });
       if (category) params.set('category', category);
+      if (storeSlug) params.set('store', storeSlug);
       if (q) params.set('q', q);
       const data = await api(`/api/deals?${params}`);
       if (!alive()) return;
@@ -695,7 +703,7 @@ async function detailPage({ params, alive }) {
         <div>
           <div class="meta-line">
             <strong>${d.store}</strong>
-            ${d.category ? html`<a class="badge" href="/deals?category=${d.category.slug}">${d.category.name}</a>` : ''}
+            ${d.category ? html`<a class="badge" href="/c/${d.category.slug}">${d.category.name}</a>` : ''}
           </div>
           <h1>${d.title}</h1>
           <div class="prices" style="gap:12px;align-items:center">
