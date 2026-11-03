@@ -265,7 +265,6 @@ function dealCard(d, { hot = false, extra = '', priority = false } = {}) {
       <div class="card-foot">
         ${removed ? '' : voteWidget(d)}
         <span title="Comments">💬 ${d.commentCount}</span>
-        <span class="age" title="${fullDate(d.createdAt)}">${timeAgo(d.createdAt)}</span>
       </div>
       ${extra}
     </div>
@@ -576,6 +575,12 @@ async function renderRoute() {
   const seq = ++routeSeq;
   const url = new URL(location.href);
   markActiveNav();
+  // The side Feedback tab says which page the feedback came from (shown in Admin → Feedback).
+  const fbTab = $('#feedback-tab');
+  if (fbTab) {
+    fbTab.hidden = url.pathname === '/feedback' || url.pathname.startsWith('/admin');
+    fbTab.href = `/feedback?from=${encodeURIComponent(url.pathname + url.search)}`;
+  }
   const search = $('#search-form input');
   if (search) search.value = url.pathname === '/deals' ? url.searchParams.get('q') || '' : '';
   for (const [re, page] of ROUTES) {
