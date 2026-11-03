@@ -9,7 +9,7 @@ export function registerDealRoutes({ route, db, repo, rateLimit, scraper, resolv
   // ------------------------------------------------------------ discovery (§6, §7)
 
   route('GET', '/api/home', async ({ user }) => {
-    const [latest, hot, fy] = await Promise.all([repo.latest(12), repo.hotSlice(12), repo.forYou(user, 12)]);
+    const [latest, hot, fy] = await Promise.all([repo.latest(100), repo.hotSlice(10), repo.forYou(user, 12)]);
     for (const list of [latest, hot, fy.items]) await repo.attachMyVotes(list, user);
     return { latest, hot, forYou: fy.items, forYouPersonalized: fy.personalized };
   });

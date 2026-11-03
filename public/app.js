@@ -331,6 +331,18 @@ const actions = {
     reportModal(btn.dataset.type, btn.dataset.id);
   },
   async logout() {
+    const ok = await openModal(
+      html`<form>
+        <h2>Sign out?</h2>
+        <p class="muted">Are you sure you want to sign out?</p>
+        <div class="modal-actions">
+          <button type="button" class="btn" data-close>Cancel</button>
+          <button class="btn btn-primary">Sign out</button>
+        </div>
+      </form>`,
+      () => true,
+    );
+    if (!ok) return;
     await api('/api/auth/logout', { method: 'POST' }).catch(() => {});
     state.user = null;
     renderChrome();
@@ -435,6 +447,7 @@ const ROUTES = [
   [/^\/privacy$/, privacyPage],
   [/^\/terms$/, termsPage],
   [/^\/delete-account$/, deleteAccountInfoPage],
+  [/^\/feedback$/, feedbackPage],
   [/^\/admin(?:\/(\w+))?$/, adminPage],
 ];
 
@@ -547,7 +560,7 @@ function setPage(title, content) {
 async function homePage({ alive }) {
   setPage(
     '',
-    html`<div class="section"><div class="row-scroller">${skeletonCards(5)}</div></div><div class="section"><div class="row-scroller">${skeletonCards(5)}</div></div>`,
+    html`<div class="section"><div class="row-scroller">${skeletonCards(5)}</div></div><div class="section"><div class="grid">${skeletonCards(8)}</div></div>`,
   );
   const data = await api('/api/home');
   if (!alive()) return;
@@ -567,9 +580,29 @@ async function homePage({ alive }) {
         <a class="chip active" href="/deals">All</a>
         ${state.categories.map((c) => html`<a class="chip" href="/deals?category=${c.slug}">${c.name}</a>`)}
       </nav>
-      ${section('Latest', 'Fresh from the community', data.latest, '/deals')}
-      ${section('🔥 Hot Deals', 'Most upvoted right now', data.hot, '/deals?sort=hot', { hot: true })}
-      ${section('For You', fySub, data.forYou, null)}
+      <div class="home-layout">
+        <div class="home-main">
+          ${section('For You', fySub, data.forYou, null)}
+          <section class="section">
+            <div class="section-head"><h2>Latest</h2><span class="muted small">Fresh from the community</span></div>
+            ${data.latest.length ? html`<div class="grid">${data.latest.map((d) => dealCard(d))}</div>` : html`<p class="muted">Nothing here yet.</p>`}
+            ${data.latest.length ? html`<div class="load-more"><a class="btn" href="/deals">See all deals →</a></div>` : ''}
+          </section>
+        </div>
+        <aside class="home-hot section" aria-label="Hot deals">
+          <div class="section-head"><h2>🔥 Hot Deals</h2><a class="see-all" href="/deals?sort=hot">See all →</a></div>
+          <p class="muted small" style="margin:-6px 0 10px">Most upvoted right now</p>
+          ${data.hot.length
+            ? html`<ol class="hot-list">${data.hot.map(
+                (d) => html`<li><a href="/deals/${d.id}">
+                  <img src="${d.imageUrl || placeholder(d.store)}" data-label="${d.store}" alt="" loading="lazy">
+                  <span class="hot-body"><span class="card-store">${d.store}</span><span class="hot-title">${d.title}</span>${priceBlock(d)}</span>
+                  <span class="hot-score" title="Score">▲ ${d.score}</span>
+                </a></li>`,
+              )}</ol>`
+            : html`<p class="muted">Nothing here yet.</p>`}
+        </aside>
+      </div>
     `,
   );
 }
@@ -1117,7 +1150,7 @@ async function accountPage() {
         <a class="btn" href="/saved?tab=posts">My posts</a>
         <button class="btn" data-action="logout">Sign out</button>
       </p>
-      <p class="muted small"><a href="/privacy">Privacy Policy</a> · <a href="/terms">Terms</a> · <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
+      <p class="muted small"><a href="/feedback">Send feedback</a> · <a href="/privacy">Privacy Policy</a> · <a href="/terms">Terms</a> · <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
       <hr style="border:0;border-top:1px solid var(--border);margin:24px 0">
       <h2 style="font-size:18px">Delete account</h2>
       <p class="muted small">Permanently delete your account and personal data.</p>
@@ -1176,6 +1209,46 @@ async function deleteAccountPage() {
       errBox.hidden = false;
       errBox.textContent = err.message;
       btn.disabled = !ready();
+    }
+  });
+}
+
+async function feedbackPage({ query }) {
+  const u = state.user;
+  setPage(
+    'Send feedback',
+    html`<div class="panel narrow"><h1 style="margin-top:0">Send feedback</h1>
+      <p class="muted">Found a bug, have an idea, or want a store added? Tell us. The ShareDeals team reads every message.</p>
+      <form id="feedback-form">
+        <div class="form-error" hidden></div>
+        <div class="field"><label for="f-msg">Your feedback</label>
+          <textarea id="f-msg" name="message" rows="6" maxlength="4000" required minlength="3"></textarea></div>
+        ${u
+          ? html`<p class="muted small">Sent as @${u.handle}. We may reply to ${u.email}.</p>`
+          : html`<div class="field"><label for="f-email">Email (optional, if you'd like a reply)</label>
+              <input id="f-email" name="email" type="email" autocomplete="email" maxlength="200"></div>`}
+        <button class="btn btn-primary">Send feedback</button>
+      </form>
+    </div>`,
+  );
+  const form = $('#feedback-form');
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errBox = $('.form-error', form);
+    const btn = $('button', form);
+    errBox.hidden = true;
+    btn.disabled = true;
+    try {
+      await api('/api/feedback', {
+        method: 'POST',
+        body: { message: form.message.value, email: form.email?.value || '', page: query.get('from') || document.referrer || '', platform: native ? 'android' : 'web' },
+      });
+      track('send_feedback');
+      $('#app .panel').innerHTML = String(html`<h1 style="margin-top:0">Thanks!</h1><p>Your feedback has been sent.</p><p><a class="btn" href="/">Back to deals</a></p>`);
+    } catch (err) {
+      errBox.hidden = false;
+      errBox.textContent = err.message;
+      btn.disabled = false;
     }
   });
 }
@@ -1296,6 +1369,7 @@ const ADMIN_TABS = [
   ['comments', 'Comments', false],
   ['users', 'Users & roles', true],
   ['categories', 'Categories', true],
+  ['feedback', 'Feedback', false],
   ['audit', 'Audit log', false],
 ];
 
@@ -1316,14 +1390,14 @@ async function adminPage({ params, query, alive }) {
         <nav class="admin-nav" aria-label="Admin sections">
           ${ADMIN_TABS.filter(([, , adminOnly]) => !adminOnly || isAdmin()).map(
             ([k, label]) =>
-              html`<a href="/admin/${k}" class="${k === tab ? 'active' : ''}">${label}${k === 'reports' && summary.openReports ? html`<span class="count">${summary.openReports}</span>` : ''}</a>`,
+              html`<a href="/admin/${k}" class="${k === tab ? 'active' : ''}">${label}${k === 'reports' && summary.openReports ? html`<span class="count">${summary.openReports}</span>` : ''}${k === 'feedback' && summary.newFeedback ? html`<span class="count">${summary.newFeedback}</span>` : ''}</a>`,
           )}
         </nav>
         <div id="admin-body">${content}</div>
       </div>`,
     );
   const reload = () => renderRoute();
-  const handlers = { reports: adminReports, deals: adminDeals, comments: adminComments, users: adminUsers, categories: adminCategories, audit: adminAudit };
+  const handlers = { reports: adminReports, deals: adminDeals, comments: adminComments, users: adminUsers, categories: adminCategories, feedback: adminFeedback, audit: adminAudit };
   await handlers[tab]({ shell, query, alive, reload, summary });
 }
 
@@ -1566,6 +1640,43 @@ async function adminCategories({ shell, alive, reload }) {
   }
   bindAdminActions($('#admin-body'), {
     toggle: ({ id, active }) => modAction(() => api(`/api/admin/categories/${id}`, { method: 'PATCH', body: { active: active === '1' } }), 'Category updated', refreshMeta),
+  });
+}
+
+async function adminFeedback({ shell, query, alive, reload }) {
+  const page = Number(query.get('page')) || 1;
+  const status = query.get('status') || 'new';
+  const p = new URLSearchParams({ status: status === 'all' ? '' : status, page });
+  const data = await api(`/api/admin/feedback?${p}`);
+  if (!alive()) return;
+  const link = (params) => `/admin/feedback?${new URLSearchParams({ status, ...params })}`;
+  shell(html`<form class="toolbar" id="adm-filter">
+      <select class="input" name="status">${[['new', 'New'], ['done', 'Done'], ['all', 'All']].map(([v, l]) => html`<option value="${v}" ${status === v ? 'selected' : ''}>${l}</option>`)}</select>
+    </form>
+    <div class="table-wrap"><table>
+      <thead><tr><th>When</th><th>From</th><th>Feedback</th><th>Where</th><th></th></tr></thead>
+      <tbody>${data.items.map(
+        (f) => html`<tr>
+          <td title="${fullDate(f.createdAt)}">${timeAgo(f.createdAt)}</td>
+          <td>${f.handle ? html`@${f.handle}` : html`<span class="muted">guest</span>`}${f.email ? html`<br><a class="small" href="mailto:${f.email}">${f.email}</a>` : ''}</td>
+          <td style="white-space:pre-wrap;min-width:280px">${f.message}</td>
+          <td class="small"><span class="badge">${f.platform || 'web'}</span>${f.page ? html`<br><span class="muted" title="${f.userAgent || ''}">${f.page}</span>` : ''}</td>
+          <td class="actions-cell">${
+            f.status === 'new'
+              ? html`<button class="btn btn-sm" data-adm="setStatus" data-id="${f.id}" data-status="done">Mark done</button>`
+              : html`<button class="btn btn-sm" data-adm="setStatus" data-id="${f.id}" data-status="new">Reopen</button>`
+          }</td>
+        </tr>`,
+      )}</tbody>
+    </table>${data.items.length ? '' : emptyState(status === 'new' ? 'All caught up' : 'No feedback', status === 'new' ? 'No new feedback right now.' : '')}</div>
+    <div class="load-more">
+      ${page > 1 ? html`<a class="btn" href="${link({ page: page - 1 })}">← Newer</a>` : ''}
+      ${data.hasMore ? html`<a class="btn" href="${link({ page: page + 1 })}">Older →</a>` : ''}
+    </div>`);
+  bindToolbar();
+  bindAdminActions($('#admin-body'), {
+    setStatus: ({ id, status: s }) =>
+      modAction(() => api(`/api/admin/feedback/${id}/status`, { method: 'POST', body: { status: s } }), s === 'done' ? 'Marked done' : 'Reopened', reload),
   });
 }
 

@@ -71,7 +71,7 @@ export function registerAuthRoutes({ route, db, rateLimit, secureCookies, oauthP
           WHERE d.id = v.deal_id`,
         user.id,
       );
-      for (const table of ['votes', 'bookmarks', 'views', 'comments', 'sessions', 'oauth_identities', 'app_login_codes']) {
+      for (const table of ['votes', 'bookmarks', 'views', 'comments', 'sessions', 'oauth_identities', 'app_login_codes', 'feedback']) {
         await db.run(`DELETE FROM ${table} WHERE user_id = ?`, user.id);
       }
       await db.run('DELETE FROM reports WHERE reporter_id = ?', user.id);

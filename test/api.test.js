@@ -229,6 +229,22 @@ test('end-to-end: auth, submit, dedup, vote, comment, bookmark, moderation', asy
     assert.equal(restore.status, 409);
   });
 
+  await t.test('feedback: anyone can send it, moderators read and resolve it', async () => {
+    assert.equal((await anon.post('/api/feedback', { message: '' })).status, 400);
+    assert.equal((await anon.post('/api/feedback', { message: 'Add Croma please', email: 'nope' })).status, 400);
+    assert.equal((await anon.post('/api/feedback', { message: 'Add Croma please', email: 'g@t.test', page: '/deals' })).status, 200);
+    assert.equal((await poster.post('/api/feedback', { message: 'Love it', platform: 'android' })).status, 200);
+    assert.equal((await poster.get('/api/admin/feedback')).status, 403);
+    const list = (await admin.get('/api/admin/feedback?status=new')).data.items;
+    const guest = list.find((f) => f.message === 'Add Croma please');
+    assert.equal(guest.email, 'g@t.test');
+    assert.equal(guest.handle, null);
+    assert.equal(list.find((f) => f.message === 'Love it').platform, 'android');
+    assert.ok((await admin.get('/api/admin/summary')).data.newFeedback >= 2);
+    assert.equal((await admin.post(`/api/admin/feedback/${guest.id}/status`, { status: 'done' })).status, 200);
+    assert.ok(!(await admin.get('/api/admin/feedback?status=new')).data.items.some((f) => f.id === guest.id));
+  });
+
   await t.test('admin: promote, suspend, ban', async () => {
     assert.equal((await admin.post(`/api/admin/users/${trollUser.id}/role`, { role: 'admin' })).status, 400, 'cannot mint admins');
     assert.equal((await admin.post(`/api/admin/users/${trollUser.id}/status`, { status: 'suspended', reason: 'spam' })).status, 200);

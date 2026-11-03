@@ -10,6 +10,7 @@ import { registerAuthRoutes } from './routes/auth.js';
 import { registerDealRoutes } from './routes/deals.js';
 import { registerOfferRoutes } from './routes/offers.js';
 import { registerAdminRoutes } from './routes/admin.js';
+import { registerFeedbackRoutes } from './routes/feedback.js';
 import { registerHealthRoutes } from './routes/health.js';
 import { createOAuth, oauthConfigFromEnv } from './oauth.js';
 
@@ -26,6 +27,7 @@ const RATE_LIMITS = {
   comment: [20, 10 * MIN],
   report: [20, HOUR],
   oauth: [30, 15 * MIN],
+  feedback: [10, HOUR],
 };
 
 const MIME = {
@@ -75,6 +77,7 @@ export function createApp({
   registerDealRoutes(ctx);
   registerOfferRoutes(ctx);
   registerAdminRoutes(ctx);
+  registerFeedbackRoutes(ctx);
   registerHealthRoutes(ctx);
 
   // ------------------------------------------------------------ responses

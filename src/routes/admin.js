@@ -12,10 +12,11 @@ export function registerAdminRoutes({ route, db, repo }) {
       `SELECT (SELECT COUNT(DISTINCT (target_type, target_id)) FROM reports WHERE status = 'open') AS open_reports,
               (SELECT COUNT(*) FROM deals WHERE status = 'active') AS active_deals,
               (SELECT COUNT(*) FROM deals WHERE created_at > ?) AS deals_today,
-              (SELECT COUNT(*) FROM users) AS users`,
+              (SELECT COUNT(*) FROM users) AS users,
+              (SELECT COUNT(*) FROM feedback WHERE status = 'new') AS new_feedback`,
       Date.now() - DAY,
     );
-    return { openReports: r.open_reports, activeDeals: r.active_deals, dealsToday: r.deals_today, users: r.users };
+    return { openReports: r.open_reports, activeDeals: r.active_deals, dealsToday: r.deals_today, users: r.users, newFeedback: r.new_feedback };
   });
 
   // ------------------------------------------------------------ report queue
@@ -274,6 +275,30 @@ export function registerAdminRoutes({ route, db, repo }) {
       throw err;
     }
     await repo.logAction(user.id, 'category', id, name !== cat.name ? `rename (${cat.name} → ${name})` : active ? 'activate' : 'deactivate');
+    return { ok: true };
+  });
+
+  // ------------------------------------------------------------ feedback
+
+  route('GET', '/api/admin/feedback', MOD, async ({ query }) => {
+    const status = ['new', 'done'].includes(query.get('status')) ? query.get('status') : null;
+    const page = intParam(query.get('page'), 1, { max: 1000 });
+    const rows = await db.all(
+      `SELECT f.*, u.handle FROM feedback f LEFT JOIN users u ON u.id = f.user_id
+        ${status ? 'WHERE f.status = ?' : ''} ORDER BY f.created_at DESC, f.id DESC LIMIT 51 OFFSET ?`,
+      ...(status ? [status] : []), (page - 1) * 50,
+    );
+    const items = rows.slice(0, 50).map((r) => ({
+      id: r.id, message: r.message, email: r.email, handle: r.handle || null, page: r.page, platform: r.platform,
+      userAgent: r.user_agent, status: r.status, createdAt: r.created_at,
+    }));
+    return { page, hasMore: rows.length > 50, items };
+  });
+
+  route('POST', '/api/admin/feedback/:id/status', MOD, async ({ params, body }) => {
+    if (!['new', 'done'].includes(body.status)) throw new HttpError(400, 'Invalid status');
+    const r = await db.run('UPDATE feedback SET status = ? WHERE id = ?', body.status, Number(params.id));
+    if (!r.changes) throw new HttpError(404, 'Feedback not found');
     return { ok: true };
   });
 

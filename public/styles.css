@@ -306,3 +306,26 @@ td.actions-cell .btn + .btn { margin-left: 6px; }
 a.avatar { text-decoration: none; }
 /* Inside the Android app the system shows its own back button and share sheet. */
 .in-app .skip-link { display: none; }
+
+.site-footer { max-width: 1240px; margin: -64px auto 0; padding: 0 16px 32px; text-align: center; font-size: 13px; color: var(--muted); }
+.site-footer a { color: inherit; }
+@media (max-width: 760px) { .site-footer { padding-bottom: 96px; } }
+
+/* Home: personalised and latest deals on the left, a Hot Deals column on the right. */
+.home-layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 24px; align-items: start; }
+.home-hot { position: sticky; top: 76px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 14px; }
+.hot-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.hot-list a { display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px; border-radius: 10px; color: inherit; text-decoration: none; }
+.hot-list a:hover { background: var(--surface-2); }
+.hot-list img { width: 56px; height: 56px; object-fit: contain; border-radius: 8px; background: #fff; }
+.hot-body { display: grid; gap: 2px; min-width: 0; }
+.hot-body .card-store { font-size: 11px; }
+.hot-title { font-weight: 600; font-size: 14px; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.hot-body .price { font-size: 14px; }
+.hot-score { font-weight: 700; font-size: 13px; color: var(--accent-text); white-space: nowrap; }
+@media (max-width: 1000px) {
+  .home-layout { grid-template-columns: minmax(0, 1fr); }
+  .home-hot { position: static; order: -1; }
+  .home-main { display: contents; }
+  .home-main > .section:first-child { order: -2; }
+}
