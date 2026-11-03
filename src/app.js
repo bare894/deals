@@ -1,6 +1,7 @@
 // HTTP application: wires the router, route modules, static files and the SPA shell.
 import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
+import { brotliCompressSync, gzipSync, constants as zlibConstants } from 'node:zlib';
 import { autoPopulate, resolveShortener } from './scrape.js';
 import { SESSION_COOKIE, parseCookies, userForToken } from './auth.js';
 import { HttpError, clientIp, createRouter, escapeHtml, makeRateLimiter, readJson } from './http.js';
@@ -36,7 +37,7 @@ const RATE_LIMITS = {
 
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
-  '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.json': 'application/json', '.webmanifest': 'application/manifest+json',
+  '.svg': 'image/svg+xml', '.png': 'image/png', '.webp': 'image/webp', '.ico': 'image/x-icon', '.json': 'application/json', '.webmanifest': 'application/manifest+json',
 };
 
 const SECURITY_HEADERS = {
@@ -93,12 +94,38 @@ export function createApp({
 
   function send(res, status, body, headers = {}) {
     const isJson = typeof body !== 'string' && !Buffer.isBuffer(body);
-    res.writeHead(status, {
+    const all = {
       ...SECURITY_HEADERS,
       ...(isJson ? { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } : {}),
       ...headers,
-    });
-    res.end(isJson ? JSON.stringify(body) : body);
+    };
+    let out = isJson ? JSON.stringify(body) : body;
+    // Compress text (HTML, CSS, JS, JSON, XML, SVG) when the browser accepts it.
+    if (out && out.length > 1024 && /^(text\/|application\/(json|javascript|xml|manifest)|image\/svg)/.test(String(all['content-type'] || ''))) {
+      const accept = String(res.req?.headers['accept-encoding'] || '');
+      const enc = /\bbr\b/.test(accept) ? 'br' : /\bgzip\b/.test(accept) ? 'gzip' : null;
+      if (enc) {
+        out = compressed(out, enc);
+        all['content-encoding'] = enc;
+      }
+      all.vary = 'Accept-Encoding';
+    }
+    res.writeHead(status, all);
+    res.end(res.req?.method === 'HEAD' ? undefined : out);
+  }
+
+  // Static files are compressed once per version; everything else on the fly.
+  const compressCache = new Map();
+  function compressed(body, enc) {
+    const buf = Buffer.isBuffer(body) ? body : Buffer.from(body);
+    const key = buf.length > 4096 ? `${enc}:${buf.length}:${buf.subarray(0, 64).toString('base64')}:${buf.subarray(-64).toString('base64')}` : null;
+    if (key && compressCache.has(key)) return compressCache.get(key);
+    const out = enc === 'br' ? brotliCompressSync(buf, { params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 5 } }) : gzipSync(buf);
+    if (key) {
+      if (compressCache.size > 200) compressCache.clear();
+      compressCache.set(key, out);
+    }
+    return out;
   }
 
   function baseUrl(req) {
@@ -108,8 +135,12 @@ export function createApp({
   }
 
   let indexCache = null;
+  // The stylesheet is inlined so the first render doesn't wait on a second request.
   async function indexHtml() {
-    if (!indexCache || process.env.NODE_ENV !== 'production') indexCache = await readFile(path.join(publicDir, 'index.html'), 'utf8');
+    if (!indexCache || process.env.NODE_ENV !== 'production') {
+      const [page, css] = await Promise.all([readFile(path.join(publicDir, 'index.html'), 'utf8'), readFile(path.join(publicDir, 'styles.css'), 'utf8')]);
+      indexCache = page.replace('<link rel="stylesheet" href="/styles.css">', () => `<style>${css.replace(/<\/style/gi, '<\\/style')}</style>`);
+    }
     return indexCache;
   }
 

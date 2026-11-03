@@ -3,7 +3,7 @@
 // crawlers that don't run JavaScript read it), robots.txt and sitemap.xml.
 import { escapeHtml, inr } from './http.js';
 import { slugify } from './db.js';
-import { dealMetaDescription, dealMetaTitle } from '../public/meta.js';
+import { dealMetaDescription, dealMetaTitle, sizedImage } from '../public/meta.js';
 
 const SITE = 'ShareDeals';
 const SITE_TITLE = 'ShareDeals.in | Community-vetted deals in India';
@@ -248,6 +248,7 @@ export function createSeo({ db, repo }) {
         ['product:price:currency', 'INR'],
       ],
       jsonld: [...(product.offers.length ? [product] : []), breadcrumbs(base, crumbs)],
+      preloadImage: d.imageUrl ? { href: sizedImage(d.imageUrl, 600), srcset: sizedImage(d.imageUrl, 600) !== d.imageUrl ? `${sizedImage(d.imageUrl, 600)} 1x, ${sizedImage(d.imageUrl, 1200)} 2x` : null } : null,
       body: `<article><nav class="breadcrumbs" aria-label="Breadcrumb"><ol>${crumbs.map(([n, p], i) => (i === crumbs.length - 1 ? `<li aria-current="page">${esc(n)}</li>` : `<li><a href="${esc(p)}">${esc(n)}</a></li>`)).join('')}</ol></nav>
         <h1>${esc(d.title)}</h1>
         <p>${esc(dealDescription(d))}</p>
@@ -273,6 +274,10 @@ export function createSeo({ db, repo }) {
       p.noindex ? '<meta name="robots" content="noindex, follow">' : '<meta name="robots" content="index, follow, max-image-preview:large">',
       ...(p.canonical ? [`<link rel="canonical" href="${esc(p.canonical)}">`, `<meta property="al:web:url" content="${esc(p.canonical)}">`] : []),
       ...(p.jsonld || []).map(ld),
+      // The app shows this image as the page's largest element; start fetching it with the HTML.
+      ...(p.preloadImage
+        ? [`<link rel="preload" as="image" href="${esc(p.preloadImage.href)}"${p.preloadImage.srcset ? ` imagesrcset="${esc(p.preloadImage.srcset)}"` : ''} fetchpriority="high">`]
+        : []),
     ].join('\n    ');
     return indexHtml
       .replace(/<title>[^<]*<\/title>/, `<title>${esc(title)}</title>`)

@@ -59,3 +59,19 @@ export function dealMetaDescription(d) {
   if (desc.length < DESC_MIN) desc += extra;
   return clip(desc, DESC_MAX);
 }
+
+/**
+ * Product photos are linked from the stores' CDNs, usually at 1500px. Ask the CDN for one sized
+ * to where it's shown (and WebP where the CDN offers it): Amazon, Flipkart and Myntra. Other
+ * hosts are left as they are.
+ */
+export function sizedImage(url, width) {
+  if (!url) return url;
+  const amazon = url.match(/^(https:\/\/m\.media-amazon\.com\/images\/I\/[\w+-]+?)(\.[^/]*)?\.(jpe?g|png)$/i);
+  if (amazon) return `${amazon[1]}._SL${width}_FMwebp_.jpg`;
+  if (/^https:\/\/rukmini\w*\.flixcart\.com\/image\/\d+\/\d+\//.test(url)) return url.replace(/\/image\/\d+\/\d+\//, `/image/${width}/${width}/`);
+  if (/^https:\/\/assets\.myntassets\.com\/[^/]*\/v1\//.test(url)) {
+    return url.replace(/^(https:\/\/assets\.myntassets\.com\/)[^/]*\/v1\//, `$1f_webp,h_${Math.round((width * 4) / 3)},q_80,w_${width}/v1/`);
+  }
+  return url;
+}

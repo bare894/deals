@@ -1,4 +1,4 @@
-import { dealMetaDescription, dealMetaTitle } from '/meta.js';
+import { dealMetaDescription, dealMetaTitle, sizedImage } from '/meta.js';
 
 // ShareDeals web client — vanilla JS SPA (history routing, no build step).
 
@@ -66,6 +66,16 @@ function dealPath(d) {
   return slug ? `/deals/${d.id}/${slug}` : `/deals/${d.id}`;
 }
 
+/** <img> attributes for a product photo shown about `cssWidth` pixels wide (1x and 2x screens). */
+function productImg(url, cssWidth, fallbackLabel, { priority = false } = {}) {
+  // The page's main image (the LCP element) loads first; everything else waits until it's near the screen.
+  const load = priority ? html`fetchpriority="high"` : html`loading="lazy"`;
+  if (!url) return html`src="${placeholder(fallbackLabel)}" ${load}`;
+  const one = sizedImage(url, cssWidth);
+  if (one === url) return html`src="${url}" ${load}`;
+  return html`src="${one}" srcset="${one} 1x, ${sizedImage(url, cssWidth * 2)} 2x" data-orig="${url}" ${load}`;
+}
+
 const placeholder = (t) => `/img/placeholder.svg?t=${encodeURIComponent(t || 'Deal')}`;
 const isMod = () => state.user && ['moderator', 'admin'].includes(state.user.role);
 const isAdmin = () => state.user?.role === 'admin';
@@ -105,6 +115,13 @@ document.addEventListener(
   'error',
   (e) => {
     const img = e.target;
+    // A resized copy the store's CDN won't serve: try the original before the placeholder.
+    if (img.tagName === 'IMG' && img.dataset.orig && !img.dataset.triedOrig) {
+      img.dataset.triedOrig = '1';
+      img.removeAttribute('srcset');
+      img.src = img.dataset.orig;
+      return;
+    }
     if (img.tagName === 'IMG' && !img.dataset.fallback) {
       img.dataset.fallback = '1';
       img.src = placeholder(img.dataset.label);
@@ -216,12 +233,12 @@ function voteWidget(d, { large = false } = {}) {
   </div>`;
 }
 
-function dealCard(d, { hot = false, extra = '' } = {}) {
+function dealCard(d, { hot = false, extra = '', priority = false } = {}) {
   const removed = d.status !== 'active';
   return html`<article class="card ${removed ? 'is-removed' : ''}">
     ${removed ? '' : html`<a class="card-link" href="${dealPath(d)}" aria-label="${d.title}"></a>`}
     <div class="card-media">
-      <img src="${d.imageUrl || placeholder(d.store)}" data-label="${d.store}" alt="" loading="lazy">
+      <img ${productImg(d.imageUrl, 300, d.store, { priority })} data-label="${d.store}" alt="">
       ${d.discountPct ? html`<span class="pill-off">−${d.discountPct}%</span>` : ''}
       ${hot && d.score >= 20 ? html`<span class="pill-hot">🔥 Hot</span>` : ''}
       ${removed ? html`<span class="removed-tag">No longer available</span>` : ''}
@@ -397,7 +414,7 @@ function renderChrome() {
   const u = state.user;
   const q = new URLSearchParams(location.search).get('q') || '';
   $('#topbar').innerHTML = String(html`<div class="topbar-inner">
-    <a class="logo" href="/" aria-label="ShareDeals.in home"><picture class="logo-full"><source srcset="/img/logo-dark.png" media="(prefers-color-scheme: dark)"><img src="/img/logo.png" alt="ShareDeals.in" width="166" height="44"></picture><picture class="logo-mark"><source srcset="/img/mark-dark.png" media="(prefers-color-scheme: dark)"><img src="/img/mark.png" alt="ShareDeals.in" width="80" height="44"></picture></a>
+    <a class="logo" href="/" aria-label="ShareDeals.in home"><picture class="logo-full"><source srcset="/img/logo-dark.webp" media="(prefers-color-scheme: dark)" type="image/webp"><source srcset="/img/logo-dark.png" media="(prefers-color-scheme: dark)"><source srcset="/img/logo.webp" type="image/webp"><img src="/img/logo.png" alt="ShareDeals.in" width="166" height="44"></picture><picture class="logo-mark"><source srcset="/img/mark-dark.webp" media="(prefers-color-scheme: dark)" type="image/webp"><source srcset="/img/mark-dark.png" media="(prefers-color-scheme: dark)"><source srcset="/img/mark.webp" type="image/webp"><img src="/img/mark.png" alt="ShareDeals.in" width="80" height="44"></picture></a>
     <form class="search" id="search-form" role="search">
       <input type="search" name="q" placeholder="Search deals or stores" aria-label="Search deals" value="${q}">
     </form>
@@ -604,7 +621,7 @@ async function homePage({ alive }) {
   if (!alive()) return;
   const section = (title, sub, items, href, opts = {}) => html`<section class="section">
     <div class="section-head"><h2>${title}</h2><span class="muted small">${sub}</span>${href ? html`<a class="see-all" href="${href}">See all →</a>` : ''}</div>
-    ${items.length ? html`<div class="row-scroller">${items.map((d) => dealCard(d, opts))}</div>` : html`<p class="muted">Nothing here yet.</p>`}
+    ${items.length ? html`<div class="row-scroller">${items.map((d, i) => dealCard(d, { ...opts, priority: i < 2 }))}</div>` : html`<p class="muted">Nothing here yet.</p>`}
   </section>`;
   const fySub = data.forYouPersonalized
     ? 'Based on what you vote on, save, and view'
@@ -634,7 +651,7 @@ async function homePage({ alive }) {
           ${data.hot.length
             ? html`<ol class="hot-list">${data.hot.map(
                 (d) => html`<li><a href="${dealPath(d)}">
-                  <img src="${d.imageUrl || placeholder(d.store)}" data-label="${d.store}" alt="" loading="lazy">
+                  <img ${productImg(d.imageUrl, 80, d.store)} data-label="${d.store}" alt="">
                   <span class="hot-body"><span class="card-store">${d.store}</span><span class="hot-title">${d.title}</span>${priceBlock(d)}</span>
                   <span class="hot-score" title="Score">▲ ${d.score}</span>
                 </a></li>`,
@@ -705,7 +722,7 @@ async function listingsPage({ query, alive, categorySlug = '', storeSlug = '' })
       if (page === 0) feed.innerHTML = '';
       page = data.page;
       hasMore = data.hasMore;
-      feed.insertAdjacentHTML('beforeend', String(html`${data.items.map((d) => dealCard(d, { hot: sort === 'hot' }))}`));
+      feed.insertAdjacentHTML('beforeend', String(html`${data.items.map((d, i) => dealCard(d, { hot: sort === 'hot', priority: page === 1 && i < 2 }))}`));
       if (page === 1 && !data.items.length) {
         feed.outerHTML = String(
           emptyState('No deals found', q ? 'Try a different search.' : 'Be the first to post one!', html`<a class="btn btn-primary" href="/submit">Post a deal</a>`),
@@ -744,7 +761,7 @@ async function detailPage({ params, alive }) {
         <li aria-current="page">${d.title}</li>
       </ol></nav>
       <article class="detail">
-        <div class="detail-media"><img src="${d.imageUrl || placeholder(d.store)}" data-label="${d.store}" alt="${d.title}"></div>
+        <div class="detail-media"><img ${productImg(d.imageUrl, 600, d.store, { priority: true })} data-label="${d.store}" alt="${d.title}"></div>
         <div>
           <div class="meta-line">
             <strong>${d.store}</strong>
@@ -986,7 +1003,7 @@ async function submitPage({ query, alive }) {
           const d = m.deal;
           return html`<div class="match-card ${m.confidence}">
             <div class="mini-deal">
-              <img src="${d.imageUrl || placeholder(d.title)}" data-label="${d.title.slice(0, 20)}" alt="">
+              <img ${productImg(d.imageUrl, 120, d.title)} data-label="${d.title.slice(0, 20)}" alt="">
               <div class="grow">
                 <a class="mini-title" href="${dealPath(d)}" target="_blank" rel="noopener">${d.title}</a>
                 <div class="small muted">${d.price != null ? html`${money(d.price)} on ` : ''}${d.store}${d.offerCount > 1 ? ` + ${d.offerCount - 1} more` : ''} · score ${d.score} · by @${d.poster.handle}</div>
@@ -1635,7 +1652,7 @@ async function adminReports({ shell, alive, reload, summary }) {
     if (r.targetType === 'deal') {
       const d = r.deal;
       return html`<div class="report-card">
-        <img class="thumb" src="${d?.imageUrl || placeholder(d?.store)}" data-label="${d?.store || ''}" alt="">
+        <img class="thumb" ${productImg(d?.imageUrl, 80, d?.store)} data-label="${d?.store || ''}" alt="">
         <div class="grow">
           <div class="small muted">Deal · ${r.count} report${r.count > 1 ? 's' : ''} · last ${timeAgo(r.lastAt)}</div>
           <a class="cell-title" href="${dealPath({ id: r.targetId, title: d?.title })}" target="_blank" rel="noopener">${d?.title || `Deal #${r.targetId}`}</a>
