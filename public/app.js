@@ -57,6 +57,13 @@ function timeAgo(ts) {
   return new Date(ts).toLocaleDateString('en-IN');
 }
 const fullDate = (ts) => new Date(ts).toLocaleString('en-IN');
+// Deal URLs carry the title (/deals/69/amazon-echo-dot-5th-gen); same rule as dealSlug() in src/seo.js.
+function dealPath(d) {
+  const s = String(d.title || '').toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  const slug = s.length > 80 ? s.slice(0, 80).replace(/-[^-]*$/, '') : s;
+  return slug ? `/deals/${d.id}/${slug}` : `/deals/${d.id}`;
+}
+
 const placeholder = (t) => `/img/placeholder.svg?t=${encodeURIComponent(t || 'Deal')}`;
 const isMod = () => state.user && ['moderator', 'admin'].includes(state.user.role);
 const isAdmin = () => state.user?.role === 'admin';
@@ -210,7 +217,7 @@ function voteWidget(d, { large = false } = {}) {
 function dealCard(d, { hot = false, extra = '' } = {}) {
   const removed = d.status !== 'active';
   return html`<article class="card ${removed ? 'is-removed' : ''}">
-    ${removed ? '' : html`<a class="card-link" href="/deals/${d.id}" aria-label="${d.title}"></a>`}
+    ${removed ? '' : html`<a class="card-link" href="${dealPath(d)}" aria-label="${d.title}"></a>`}
     <div class="card-media">
       <img src="${d.imageUrl || placeholder(d.store)}" data-label="${d.store}" alt="" loading="lazy">
       ${d.discountPct ? html`<span class="pill-off">−${d.discountPct}%</span>` : ''}
@@ -293,7 +300,7 @@ const actions = {
     }
   },
   async share(btn) {
-    const url = `${location.origin}/deals/${btn.dataset.id}`;
+    const url = `${location.origin}${dealPath({ id: btn.dataset.id, title: btn.dataset.title })}`;
     const title = btn.dataset.title;
     if (native) {
       try {
@@ -599,7 +606,7 @@ async function homePage({ alive }) {
           <p class="muted small hot-sub">Most upvoted right now</p>
           ${data.hot.length
             ? html`<ol class="hot-list">${data.hot.map(
-                (d) => html`<li><a href="/deals/${d.id}">
+                (d) => html`<li><a href="${dealPath(d)}">
                   <img src="${d.imageUrl || placeholder(d.store)}" data-label="${d.store}" alt="" loading="lazy">
                   <span class="hot-body"><span class="card-store">${d.store}</span><span class="hot-title">${d.title}</span>${priceBlock(d)}</span>
                   <span class="hot-score" title="Score">▲ ${d.score}</span>
@@ -807,7 +814,7 @@ function commentItem(c) {
 /** Exact same link already live (not just the same product). */
 function duplicateNotice(dup) {
   return html`<div class="form-error">This exact link has already been posted.
-    ${dup?.id ? html`<a href="/deals/${dup.id}">View the existing deal: ${dup.title}</a>` : ''}</div>`;
+    ${dup?.id ? html`<a href="${dealPath(dup)}">View the existing deal: ${dup.title}</a>` : ''}</div>`;
 }
 
 function dealForm(v, { mode, notice = '' }) {
@@ -947,14 +954,14 @@ async function submitPage({ query, alive }) {
             <div class="mini-deal">
               <img src="${d.imageUrl || placeholder(d.title)}" data-label="${d.title.slice(0, 20)}" alt="">
               <div class="grow">
-                <a class="mini-title" href="/deals/${d.id}" target="_blank" rel="noopener">${d.title}</a>
+                <a class="mini-title" href="${dealPath(d)}" target="_blank" rel="noopener">${d.title}</a>
                 <div class="small muted">${d.price != null ? html`${money(d.price)} on ` : ''}${d.store}${d.offerCount > 1 ? ` + ${d.offerCount - 1} more` : ''} · score ${d.score} · by @${d.poster.handle}</div>
               </div>
             </div>
             <div class="match-meta">
               <span class="badge ${m.confidence === 'high' ? 'match-high' : ''}">${m.confidence === 'high' ? 'Very likely the same product' : 'Possibly the same product'}</span>
               ${m.storeListed
-                ? html`<span class="small muted">${m.storeListed.store} is already listed here by @${m.storeListed.by} at ${money(m.storeListed.price)}. <a href="/deals/${d.id}">View deal</a></span>`
+                ? html`<span class="small muted">${m.storeListed.store} is already listed here by @${m.storeListed.by} at ${money(m.storeListed.price)}. <a href="${dealPath(d)}">View deal</a></span>`
                 : html`<button class="btn btn-primary btn-sm" data-attach="${d.id}">Add my ${store} link to this deal</button>`}
             </div>
           </div>`;
@@ -973,7 +980,7 @@ async function submitPage({ query, alive }) {
     const v = { ...s.fields, ...(s.draft || {}) };
     page(html`<form id="offer-form" novalidate>
       ${urlChip()}
-      <p class="muted" style="margin:0 0 8px">Adding your store link to <a href="/deals/${deal.id}" target="_blank" rel="noopener"><strong>${deal.title}</strong></a></p>
+      <p class="muted" style="margin:0 0 8px">Adding your store link to <a href="${dealPath(deal)}" target="_blank" rel="noopener"><strong>${deal.title}</strong></a></p>
       <div id="form-error"></div>
       <div class="field-row">
         <div class="field"><label for="o-price">Deal price (₹)</label><input id="o-price" name="price" inputmode="decimal" required value="${v.price ?? ''}" placeholder="0 for free"></div>
@@ -1000,7 +1007,7 @@ async function submitPage({ query, alive }) {
         await api(`/api/deals/${deal.id}/offers`, { method: 'POST', body });
         track('add_store_link', { deal_id: deal.id, store: body.store });
         toast(`Added your ${body.store} link — thanks!`);
-        navigate(`/deals/${deal.id}`, { replace: true });
+        navigate(dealPath(deal), { replace: true });
       } catch (err) {
         errBox.innerHTML = String(err.data?.duplicate ? duplicateNotice(err.data.duplicate) : html`<div class="form-error">${err.message}</div>`);
         btn.disabled = false;
@@ -1023,7 +1030,7 @@ async function submitPage({ query, alive }) {
           const { deal } = await api('/api/deals', { method: 'POST', body: { ...body, confirmNew } });
           track('post_deal', { deal_id: deal.id, store: deal.store, category: deal.category?.name });
           toast('Your deal is live!');
-          navigate(`/deals/${deal.id}`, { replace: true });
+          navigate(dealPath(deal), { replace: true });
         } catch (err) {
           // The server spotted the same product (e.g. after the title was edited): offer to add the link instead.
           if (err.status === 409 && err.data?.matches?.length) {
@@ -1053,7 +1060,7 @@ async function editPage({ params, alive }) {
     onSubmit: async (body) => {
       await api(`/api/deals/${d.id}`, { method: 'PATCH', body });
       toast('Deal updated');
-      navigate(`/deals/${d.id}`, { replace: true });
+      navigate(dealPath({ id: d.id, title: body.title || d.title }), { replace: true });
     },
   });
 }
@@ -1597,7 +1604,7 @@ async function adminReports({ shell, alive, reload, summary }) {
         <img class="thumb" src="${d?.imageUrl || placeholder(d?.store)}" data-label="${d?.store || ''}" alt="">
         <div class="grow">
           <div class="small muted">Deal · ${r.count} report${r.count > 1 ? 's' : ''} · last ${timeAgo(r.lastAt)}</div>
-          <a class="cell-title" href="/deals/${r.targetId}" target="_blank" rel="noopener">${d?.title || `Deal #${r.targetId}`}</a>
+          <a class="cell-title" href="${dealPath({ id: r.targetId, title: d?.title })}" target="_blank" rel="noopener">${d?.title || `Deal #${r.targetId}`}</a>
           <div class="small muted">${d ? html`${d.store} · ${money(d.price)} · score ${d.score} · by @${d.poster.handle}` : ''}</div>
           <div class="reasons">${r.reasons.map((x) => html`<span class="badge">${x}</span>`)}</div>
         </div>
@@ -1665,7 +1672,7 @@ async function adminDeals({ shell, query, alive, reload }) {
       <thead><tr><th>Deal</th><th>Store</th><th>Poster</th><th class="num">Score</th><th>Status</th><th><a class="th-sort" href="${location.pathname}${flipped.toString() ? `?${flipped}` : ''}" title="${sort === 'asc' ? 'Oldest first' : 'Newest first'}">Posted ${sort === 'asc' ? '▲' : '▼'}</a></th><th></th></tr></thead>
       <tbody>${items.map(
         (d) => html`<tr>
-          <td><a class="cell-title" href="/deals/${d.id}" target="_blank" rel="noopener">${d.title}</a></td>
+          <td><a class="cell-title" href="${dealPath(d)}" target="_blank" rel="noopener">${d.title}</a></td>
           <td>${d.store}</td><td>@${d.poster.handle}</td><td class="num">${d.score}</td>
           <td><span class="badge status-${d.status}">${d.status}</span></td>
           <td title="${fullDate(d.createdAt)}">${timeAgo(d.createdAt)}</td>
@@ -1698,7 +1705,7 @@ async function adminComments({ shell, query, alive, reload }) {
         (c) => html`<tr>
           <td style="max-width:360px"><div class="quote" style="margin:0">${c.body}</div></td>
           <td>@${c.author}</td>
-          <td><a class="cell-title" href="/deals/${c.dealId}" target="_blank" rel="noopener">${c.dealTitle}</a></td>
+          <td><a class="cell-title" href="${dealPath({ id: c.dealId, title: c.dealTitle })}" target="_blank" rel="noopener">${c.dealTitle}</a></td>
           <td><span class="badge status-${c.status === 'visible' ? 'active' : 'removed'}">${c.status}</span></td>
           <td title="${fullDate(c.createdAt)}">${timeAgo(c.createdAt)}</td>
           <td class="actions-cell">${
