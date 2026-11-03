@@ -241,6 +241,16 @@ function priceBlock(d, { mrpLabel = false } = {}) {
 const ICON_UP = html`<svg class="ico-thumb" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"/></svg>`;
 const ICON_DOWN = html`<svg class="ico-thumb" viewBox="0 0 24 24" aria-hidden="true"><path d="M17 14V2"/><path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z"/></svg>`;
 
+// Outline icons for the bottom bar and alerts (Lucide, ISC licence), drawn in currentColor.
+const icon = (paths) => html`<svg class="ico-line" viewBox="0 0 24 24" aria-hidden="true">${html([paths])}</svg>`;
+const ICONS = {
+  home: icon('<path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>'),
+  bell: icon('<path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/>'),
+  plus: icon('<path d="M5 12h14"/><path d="M12 5v14"/>'),
+  heart: icon('<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>'),
+  user: icon('<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>'),
+};
+
 function voteWidget(d, { large = false } = {}) {
   const mine = d.myVote || 0;
   const own = state.user && d.poster && state.user.id === d.poster.id;
@@ -453,11 +463,11 @@ function renderChrome() {
     </nav>
   </div>`);
   $('#tabbar').innerHTML = String(html`
-    <a href="/" data-nav="/"><span class="ico">⌂</span>Home</a>
-    <a href="/alerts" data-nav="/alerts"><span class="ico">🔔</span>Alerts</a>
-    <a href="/submit" class="post" data-nav="/submit"><span class="ico">+</span>Post</a>
-    <a href="/saved" data-nav="/saved"><span class="ico">♡</span>Saved</a>
-    ${u ? html`<a href="/account" data-nav="/account"><span class="ico">☺</span>Account</a>` : html`<a href="/login" data-nav="/login"><span class="ico">☺</span>Sign in</a>`}
+    <a href="/" data-nav="/"><span class="ico">${ICONS.home}</span>Home</a>
+    <a href="/alerts" data-nav="/alerts"><span class="ico">${ICONS.bell}</span>Alerts</a>
+    <a href="/submit" class="post" data-nav="/submit"><span class="ico">${ICONS.plus}</span>Post</a>
+    <a href="/saved" data-nav="/saved"><span class="ico">${ICONS.heart}</span>Saved</a>
+    ${u ? html`<a href="/account" data-nav="/account"><span class="ico">${ICONS.user}</span>Account</a>` : html`<a href="/login" data-nav="/login"><span class="ico">${ICONS.user}</span>Sign in</a>`}
   `);
   $('#search-form').addEventListener('submit', (e) => {
     e.preventDefault();
@@ -765,7 +775,7 @@ async function listingsPage({ query, alive, categorySlug = '', storeSlug = '' })
     heading,
     html`
       <div class="page-head">
-        <div><h1>${heading}</h1>${q ? html`<a class="small muted" href="${link({ q: '' })}">Clear search</a> · <button class="linkish small" id="alert-from-search">🔔 Alert me about “${q}”</button>` : ''}</div>
+        <div><h1>${heading}</h1>${q ? html`<a class="small muted" href="${link({ q: '' })}">Clear search</a> · <button class="linkish small alert-me" id="alert-from-search">${ICONS.bell}Alert me about “${q}”</button>` : ''}</div>
         <nav class="tabs" style="border:0;margin:0" aria-label="Sort">
           <a href="${link({ sort: '' })}" class="${sort === 'new' ? 'active' : ''}">Newest</a>
           <a href="${link({ sort: 'hot' })}" class="${sort === 'hot' ? 'active' : ''}">🔥 Hot</a>
@@ -1237,7 +1247,7 @@ async function alertsPage({ alive }) {
         ? html`<ul class="alert-list">${items.map(
             (a) => html`<li data-id="${a.id}">
               <div class="alert-view">
-                <span class="alert-phrase">🔔 ${a.phrase}</span>
+                <span class="alert-phrase">${ICONS.bell}${a.phrase}</span>
                 <span class="muted small">${a.matches ? `${a.matches} match${a.matches === 1 ? '' : 'es'} so far` : 'No matches yet'}</span>
                 <span class="alert-actions">
                   <a class="btn btn-sm" href="/deals?q=${encodeURIComponent(a.phrase)}">See deals</a>
