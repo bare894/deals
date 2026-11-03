@@ -9,6 +9,7 @@ import { createRepo } from './repo.js';
 import { createSeo } from './seo.js';
 import { INDEXNOW_KEY, createIndexNow } from './indexnow.js';
 import { mailerFromEnv } from './mailer.js';
+import { createPush } from './push.js';
 import { sizedImage } from '../public/meta.js';
 import { APPROVED_STORES, ROLE_RANK } from './routes/common.js';
 import { registerAuthRoutes } from './routes/auth.js';
@@ -34,6 +35,7 @@ const RATE_LIMITS = {
   oauth: [30, 15 * MIN],
   feedback: [10, HOUR],
   forgot: [5, HOUR],
+  pageview: [600, HOUR],
 };
 
 const MIME = {
@@ -76,14 +78,17 @@ export function createApp({
   // Only the live site pings search engines; tests and local runs never do.
   indexNow: indexNowEnabled = process.env.NODE_ENV === 'production',
   mailer = mailerFromEnv(),
+  pushEnv = process.env,
+  pushFetch,
 }) {
   const { route, match } = createRouter();
   const repo = createRepo(db);
   const rateLimit = makeRateLimiter(RATE_LIMITS, rateLimits);
   const oauth = createOAuth({ db, config: oauthConfig, secureCookies, baseUrl: (req) => baseUrl(req), rateLimit, fetchImpl: oauthFetch });
   const seo = createSeo({ db, repo });
+  const push = createPush({ db, repo, env: pushEnv, ...(pushFetch ? { fetchImpl: pushFetch } : {}) });
   const indexNow = createIndexNow({ db, baseUrl: (publicUrl || 'https://www.sharedeals.in').replace(/\/$/, ''), enabled: indexNowEnabled });
-  const ctx = { route, db, repo, seo, mailer, publicBase: () => (publicUrl || 'https://www.sharedeals.in').replace(/\/$/, ''), rateLimit, scraper, resolveUrl, secureCookies, oauthProviders: oauth.enabled, approvedStores };
+  const ctx = { route, db, repo, seo, push, mailer, publicBase: () => (publicUrl || 'https://www.sharedeals.in').replace(/\/$/, ''), rateLimit, scraper, resolveUrl, secureCookies, oauthProviders: oauth.enabled, approvedStores };
   registerAuthRoutes(ctx);
   registerDealRoutes(ctx);
   registerOfferRoutes(ctx);

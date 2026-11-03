@@ -387,6 +387,8 @@ const actions = {
       () => true,
     );
     if (!ok) return;
+    // This device stops getting the old account's deal alerts.
+    if (pushToken) await api('/api/push/token', { method: 'DELETE', body: { token: pushToken } }).catch(() => {});
     await api('/api/auth/logout', { method: 'POST' }).catch(() => {});
     state.user = null;
     renderChrome();
@@ -511,6 +513,56 @@ const CONTACT_EMAIL = 'info@sharedeals.in';
 
 const b64url = (bytes) => btoa(String.fromCharCode(...new Uint8Array(bytes))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 
+/**
+ * Deal alerts (app only): push notifications when a newly posted deal matches what the user has
+ * been looking at (src/push.js decides who gets one). Asks for notification permission once
+ * they're signed in, registers the device's token, and opens the deal when an alert is tapped.
+ * Google Analytics: deal_alert_permission, deal_alert_open, deal_alert_received.
+ */
+let pushToken = null;
+let pushListening = false;
+async function setupDealAlerts() {
+  if (!native || !state.user || !native.isPluginAvailable?.('PushNotifications')) return;
+  try {
+    if (!pushListening) {
+      pushListening = true;
+      nativeListen('PushNotifications', 'registration', ({ value }) => {
+        pushToken = value;
+        if (state.user) api('/api/push/token', { method: 'POST', body: { token: value } }).catch(() => {});
+      });
+      nativeListen('PushNotifications', 'pushNotificationActionPerformed', ({ notification }) => {
+        const data = notification?.data || {};
+        if (data.kind !== 'deal_alert') return;
+        track('deal_alert_open', { deal_id: data.deal_id });
+        if (data.url?.startsWith('/')) navigate(data.url);
+      });
+      // Alerts arriving while the app is open aren't shown by Android: show them in the app.
+      nativeListen('PushNotifications', 'pushNotificationReceived', (notification) => {
+        const data = notification?.data || {};
+        if (data.kind !== 'deal_alert') return;
+        track('deal_alert_received', { deal_id: data.deal_id, app_state: 'foreground' });
+        toast(notification.title || 'A deal you might like');
+      });
+    }
+    let { receive } = await nativeCall('PushNotifications', 'checkPermissions');
+    if (receive === 'prompt' || receive === 'prompt-with-rationale') {
+      ({ receive } = await nativeCall('PushNotifications', 'requestPermissions'));
+      track('deal_alert_permission', { status: receive });
+    }
+    if (receive !== 'granted') return;
+    await nativeCall('PushNotifications', 'createChannel', {
+      id: 'deal_alerts',
+      name: 'Deal alerts',
+      description: 'New deals that match what you browse',
+      importance: 4,
+      visibility: 1,
+    }).catch(() => {});
+    await nativeCall('PushNotifications', 'register');
+  } catch {
+    /* no Firebase in this build, or the user said no */
+  }
+}
+
 /** Google/Facebook refuse to sign in inside a WebView: run it in a Chrome tab; the server sends a one-time code back to the app. */
 async function appSignIn(provider, next) {
   const verifier = b64url(crypto.getRandomValues(new Uint8Array(32)));
@@ -563,8 +615,11 @@ if (native) {
 // ------------------------------------------------------------ analytics (GA4, see /analytics.js)
 
 const track = (event, params = {}) => window.gtag?.('event', event, params);
-const trackPageView = () =>
+const trackPageView = () => {
   track('page_view', { page_location: location.href, page_title: document.title, ...(native ? { app_platform: 'android_app' } : {}) });
+  // Our own log, for personalising For You (signed-in users only; see /api/pageview).
+  if (state.user) api('/api/pageview', { method: 'POST', body: { path: location.pathname } }).catch(() => {});
+};
 
 function navigate(url, { replace = false } = {}) {
   history[replace ? 'replaceState' : 'pushState']({}, '', url);
@@ -1578,6 +1633,7 @@ function authForm(sel, endpoint, query) {
       state.user = user;
       renderChrome();
       track(endpoint.endsWith('/register') ? 'sign_up' : 'login', { method: 'email' });
+      setupDealAlerts();
       toast(`Welcome, @${user.handle}!`);
       navigate(nextUrl(query), { replace: true });
     } catch (err) {
@@ -1946,6 +2002,7 @@ async function adminAudit({ shell, query, alive }) {
   }
   renderChrome();
   renderRoute();
+  setupDealAlerts();
   // Opened by a link while the app wasn't running. Android keeps reporting the launch link for
   // the app's lifetime, so remember it's been handled (the sign-in hand-off reloads the page).
   if (native) {

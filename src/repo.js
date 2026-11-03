@@ -2,7 +2,7 @@
 // multi-row invariant (best price cache, merge, remove/restore) lives here.
 import { tx } from './db.js';
 import { HttpError, cents, escapeLike, isUniqueViolation } from './http.js';
-import { rankHot, rankForYou, categoryAffinity, HOT_WINDOW_MS } from './ranking.js';
+import { rankHot, rankForYou, categoryAffinity, interestProfile, hasInterests, HOT_WINDOW_MS } from './ranking.js';
 import { productScore, productTokens, confidence, MIN_SUGGEST, HIGH_CONFIDENCE } from './matching.js';
 
 const discount = (full, price) => (full && price != null && full > price ? Math.round((1 - price / full) * 100) : null);
@@ -165,27 +165,40 @@ export function createRepo(db) {
     return rankHot(rows).slice(0, limit).map((r) => serializeDeal(r));
   }
 
-  async function forYou(user, limit) {
-    if (!user) return { personalized: false, items: await hotSlice(limit) };
+  /** What a user has shown interest in (votes, saves, comments, page visits); see ranking.js. */
+  async function userInterests(userId) {
     const signals = await db.all(
         `SELECT d.category_id, 'upvote' AS kind, COUNT(*) AS n FROM votes v JOIN deals d ON d.id = v.deal_id WHERE v.user_id = ? AND v.value = 1 GROUP BY d.category_id
          UNION ALL SELECT d.category_id, 'downvote', COUNT(*) FROM votes v JOIN deals d ON d.id = v.deal_id WHERE v.user_id = ? AND v.value = -1 GROUP BY d.category_id
          UNION ALL SELECT d.category_id, 'bookmark', COUNT(*) FROM bookmarks b JOIN deals d ON d.id = b.deal_id WHERE b.user_id = ? GROUP BY d.category_id
          UNION ALL SELECT d.category_id, 'comment', COUNT(*) FROM comments c JOIN deals d ON d.id = c.deal_id WHERE c.user_id = ? GROUP BY d.category_id
          UNION ALL SELECT d.category_id, 'view', COUNT(*) FROM views w JOIN deals d ON d.id = w.deal_id WHERE w.user_id = ? GROUP BY d.category_id`,
-        user.id, user.id, user.id, user.id, user.id,
+        userId, userId, userId, userId, userId,
       );
-    const affinity = categoryAffinity(signals);
-    if (![...affinity.values()].some((v) => v > 0)) return { personalized: false, items: await hotSlice(limit) };
+    // The last 60 days of page visits (deal, category and store pages), newest first.
+    const pageViews = await db.all(
+      `SELECT pv.deal_id, d.title AS deal_title, d.category_id AS deal_category_id, pv.category_id, pv.store, pv.viewed_at
+         FROM page_views pv LEFT JOIN deals d ON d.id = pv.deal_id
+        WHERE pv.user_id = ? AND pv.viewed_at > ? AND (pv.deal_id IS NOT NULL OR pv.category_id IS NOT NULL OR pv.store IS NOT NULL)
+        ORDER BY pv.viewed_at DESC LIMIT 500`,
+      userId, Date.now() - 60 * 24 * 3_600_000,
+    );
+    return interestProfile(pageViews, categoryAffinity(signals));
+  }
+
+  async function forYou(user, limit) {
+    if (!user) return { personalized: false, items: await hotSlice(limit) };
+    const profile = await userInterests(user.id);
+    if (!hasInterests(profile)) return { personalized: false, items: await hotSlice(limit) };
     const candidates = await db.all(
         `${DEAL_SELECT}
           WHERE d.status = 'active' AND d.created_at > ? AND d.submitted_by != ?
             AND NOT EXISTS (SELECT 1 FROM votes v WHERE v.deal_id = d.id AND v.user_id = ?)
             AND NOT EXISTS (SELECT 1 FROM bookmarks b WHERE b.deal_id = d.id AND b.user_id = ?)
           ORDER BY d.created_at DESC LIMIT 1000`,
-        Date.now() - HOT_WINDOW_MS, user.id, user.id, user.id,
+        Date.now() - 2 * HOT_WINDOW_MS, user.id, user.id, user.id,
       );
-    return { personalized: true, items: rankForYou(candidates, affinity).slice(0, limit).map((r) => serializeDeal(r)) };
+    return { personalized: true, items: rankForYou(candidates, profile).slice(0, limit).map((r) => serializeDeal(r)) };
   }
 
   // ------------------------------------------------------------ product matching
@@ -442,7 +455,7 @@ export function createRepo(db) {
 
   return {
     DEAL_SELECT, serializeDeal, serializeOffer, getDealRow, getOfferRow, getDeal, dealOffers, findActiveOfferByHash, storeOnDeal,
-    attachMyVotes, listDeals, similar, latest, hotSlice, forYou, findMatches, duplicatePairs,
+    attachMyVotes, listDeals, similar, latest, hotSlice, forYou, userInterests, findMatches, duplicatePairs,
     refreshDealPricing, createDealWithOffer, addOffer, setOfferStatus, removeDeal, restoreDeal, mergeDeals, logAction, resolveReports,
   };
 }

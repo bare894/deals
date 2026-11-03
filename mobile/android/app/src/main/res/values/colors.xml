@@ -5,4 +5,5 @@
     <color name="colorPrimaryDark">#010A5E</color>
     <color name="colorAccent">#EC0276</color>
     <color name="splashBackground">#FFFFFF</color>
+    <color name="notification_accent">#EC0276</color>
 </resources>

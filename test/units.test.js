@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { canonicalizeUrl, parseDealUrl } from '../src/canonicalize.js';
 import { extractDealFields, isPrivateIp, parsePrice, storeFromHost, autoPopulate, findMrp, guessCategory } from '../src/scrape.js';
-import { hotScore, rankHot, rankForYou, categoryAffinity } from '../src/ranking.js';
+import { hotScore, rankHot, rankForYou, categoryAffinity, interestProfile } from '../src/ranking.js';
 import { clientIp } from '../src/http.js';
 
 test('canonicalization strips tracking noise but keeps product identity', () => {
@@ -131,6 +131,22 @@ test('for-you favors categories with positive affinity', () => {
   const a = { id: 'a', category_id: 1, score: 5, created_at: now - 3_600_000 };
   const b = { id: 'b', category_id: 2, score: 5, created_at: now - 3_600_000 };
   assert.deepEqual(rankForYou([b, a], aff, now).map((d) => d.id), ['a', 'b']);
+});
+
+test('for-you: page views pull in deals like the ones visited, across categories', () => {
+  const now = Date.now();
+  const H = 3_600_000;
+  const profile = interestProfile([
+    { deal_id: 1, deal_title: 'Sony WH-1000XM5 Wireless Headphones', deal_category_id: 2, category_id: 2, store: 'Amazon', viewed_at: now - H },
+    { deal_id: null, category_id: 5, store: null, viewed_at: now - 2 * H },
+  ], new Map(), now);
+  const sony = { id: 's', title: 'Sony ULT Wear Headphones', category_id: 9, score: 1, created_at: now - H, best_store: 'Croma' };
+  const kitchen = { id: 'k', title: 'Prestige Pressure Cooker', category_id: 5, score: 1, created_at: now - H, best_store: 'Flipkart' };
+  const other = { id: 'o', title: 'Nike Running Shoes', category_id: 7, score: 3, created_at: now - H, best_store: 'Myntra' };
+  assert.deepEqual(rankForYou([other, kitchen, sony], profile, now).map((d) => d.id), ['s', 'k', 'o']);
+  // A deal opened in the last few days drops behind one they haven't seen.
+  const seenAgain = { id: 1, title: 'Sony WH-1000XM5 Wireless Headphones', category_id: 2, score: 1, created_at: now - H, best_store: 'Amazon' };
+  assert.equal(rankForYou([seenAgain, sony], profile, now)[0].id, 's');
 });
 
 test('client IP: socket address by default; behind trusted proxies, the hop they appended', () => {

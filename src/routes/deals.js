@@ -5,7 +5,7 @@ import { duplicateLinkError, storeConflictError } from '../repo.js';
 import { extractDealFields } from '../scrape.js';
 import { REPORT_REASONS, isMod, resolveLink, validateDealBody, validateOfferBody } from './common.js';
 
-export function registerDealRoutes({ route, db, repo, seo, rateLimit, scraper, resolveUrl, approvedStores }) {
+export function registerDealRoutes({ route, db, repo, seo, push, rateLimit, scraper, resolveUrl, approvedStores }) {
   // ------------------------------------------------------------ discovery (§6, §7)
 
   route('GET', '/api/home', async ({ user }) => {
@@ -27,6 +27,54 @@ export function registerDealRoutes({ route, db, repo, seo, rateLimit, scraper, r
   );
 
   route('GET', '/api/deals/:id/similar', async ({ params, user }) => ({ items: await repo.attachMyVotes(await repo.similar(Number(params.id), 10), user) }));
+
+  /**
+   * Page-view log for signed-in users (one row per page opened), used to personalise For You.
+   * The app sends the path; we work out the deal, category or store it shows. Signed-out
+   * visits aren't stored, and Admin pages are skipped.
+   */
+  route('POST', '/api/pageview', async ({ body, user }) => {
+    if (!user) return { ok: true };
+    rateLimit('pageview', user.id);
+    const path = str(body.path, 'Path', { max: 300 }).split('?')[0];
+    if (!path.startsWith('/') || path.startsWith('/admin')) return { ok: true };
+    let dealId = null;
+    let categoryId = null;
+    let store = null;
+    const deal = path.match(/^\/deals\/(\d{1,9})(?:\/[a-z0-9-]+)?$/);
+    const cat = path.match(/^\/c\/([a-z0-9-]+)$/);
+    const shop = path.match(/^\/store\/([a-z0-9-]+)$/);
+    if (deal && deal[0].split('/')[3] !== 'edit') {
+      const row = await db.get("SELECT id, category_id, best_store FROM deals WHERE id = ? AND status = 'active'", Number(deal[1]));
+      if (row) [dealId, categoryId, store] = [row.id, row.category_id, row.best_store];
+    } else if (cat) {
+      categoryId = (await db.get('SELECT id FROM categories WHERE slug = ?', cat[1]))?.id ?? null;
+    } else if (shop) {
+      store = (await seo.storeBySlug(shop[1]))?.name ?? null;
+    }
+    await db.run(
+      'INSERT INTO page_views (user_id, path, deal_id, category_id, store, viewed_at) VALUES (?, ?, ?, ?, ?, ?)',
+      user.id, path, dealId, categoryId, store, Date.now(),
+    );
+    return { ok: true };
+  });
+
+  // Android app: the device's push token for the signed-in user (deal alerts). DELETE on sign-out.
+  route('POST', '/api/push/token', { auth: true }, async ({ body, user }) => {
+    const token = str(body.token, 'Token', { required: true, max: 4096 });
+    const now = Date.now();
+    await db.run(
+      `INSERT INTO push_tokens (token, user_id, platform, created_at, updated_at) VALUES (?, ?, 'android', ?, ?)
+       ON CONFLICT (token) DO UPDATE SET user_id = excluded.user_id, updated_at = excluded.updated_at`,
+      token, user.id, now, now,
+    );
+    return { ok: true };
+  });
+
+  route('DELETE', '/api/push/token', {}, async ({ body }) => {
+    await db.run('DELETE FROM push_tokens WHERE token = ?', str(body.token, 'Token', { max: 4096 }));
+    return { ok: true };
+  });
 
   route('GET', '/api/stores', async () => ({ stores: await seo.stores() }));
 
@@ -104,6 +152,8 @@ export function registerDealRoutes({ route, db, repo, seo, rateLimit, scraper, r
       }
     }
     const id = await repo.createDealWithOffer(user.id, deal, link, offer);
+    // Deal alerts to app users it matches; in the background so posting stays fast.
+    setImmediate(() => push?.notifyNewDeal(id));
     return { deal: await repo.getDeal(id) };
   });
 

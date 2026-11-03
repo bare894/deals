@@ -1,3 +1,6 @@
+import { generateKeyPairSync } from 'node:crypto';
+import { createPush } from '../src/push.js';
+import { createRepo } from '../src/repo.js';
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -274,6 +277,54 @@ test('end-to-end: auth, submit, dedup, vote, comment, bookmark, moderation', asy
     assert.equal((await me.get('/api/me/bookmarks')).status, 401, 'signed out everywhere');
     assert.equal((await client().post('/api/auth/login', { login: 'forgetful', password: 'newpassword1' })).status, 200);
     assert.equal((await client().post('/api/auth/login', { login: 'forgetful', password: 'oldpassword1' })).status, 401);
+  });
+
+  await t.test('page views are logged for signed-in users and steer For You', async () => {
+    const mk = async (url, title) => (await poster.post('/api/deals', dealBody(url, { title, confirmNew: true }))).data.deal.id;
+    const seen = await mk('https://shop.com/pv-1', 'Qwopper Espresso Machine 15 Bar');
+    const like = await mk('https://shop.com/pv-2', 'Qwopper Espresso Grinder Pro');
+    const viewer = client();
+    assert.equal((await viewer.post('/api/auth/register', { email: 'pv@t.test', handle: 'pageviewer', password: 'password123' })).status, 200);
+    assert.equal((await anon.post('/api/pageview', { path: `/deals/${seen}` })).status, 200, 'signed-out visits are ignored');
+    assert.equal((await viewer.post('/api/pageview', { path: `/deals/${seen}/qwopper-espresso-machine-15-bar` })).status, 200);
+    assert.equal((await viewer.post('/api/pageview', { path: '/c/electronics' })).status, 200);
+    assert.equal((await viewer.post('/api/pageview', { path: '/admin/deals' })).status, 200);
+    const u = await db.get("SELECT id FROM users WHERE handle = 'pageviewer'");
+    const rows = await db.all('SELECT path, deal_id, category_id FROM page_views WHERE user_id = ? ORDER BY id', u.id);
+    assert.deepEqual(rows.map((r) => r.path), [`/deals/${seen}/qwopper-espresso-machine-15-bar`, '/c/electronics'], 'admin pages are not logged');
+    assert.equal(rows[0].deal_id, seen);
+    assert.ok(rows[1].category_id);
+    const home = (await viewer.get('/api/home')).data;
+    assert.equal(home.forYouPersonalized, true);
+    assert.equal(home.forYou[0].id, like, 'a deal like the one they viewed comes first');
+  });
+
+  await t.test('deal alerts: a new deal that matches an app user\'s views is pushed to their device', async () => {
+    const viewer = client();
+    assert.equal((await viewer.post('/api/auth/login', { login: 'pageviewer', password: 'password123' })).status, 200);
+    assert.equal((await viewer.post('/api/push/token', { token: 'device-token-1' })).status, 200);
+    assert.equal((await anon.post('/api/push/token', { token: 'x' })).status, 401);
+    const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+    const env = { FIREBASE_SERVICE_ACCOUNT: JSON.stringify({ project_id: 'sd-test', client_email: 'push@sd-test.iam', private_key: privateKey.export({ type: 'pkcs8', format: 'pem' }) }) };
+    const calls = [];
+    const fetchImpl = async (url, opts) => {
+      calls.push({ url, body: opts.body });
+      if (url.includes('oauth2')) return { ok: true, json: async () => ({ access_token: 'tok', expires_in: 3600 }) };
+      return { ok: true, text: async () => '' };
+    };
+    const push = createPush({ db, repo: createRepo(db), env, fetchImpl, log: { error() {} } });
+    assert.equal(push.enabled, true);
+    const match = (await poster.post('/api/deals', dealBody('https://shop.com/pv-3', { title: 'Qwopper Espresso Tamper Steel', confirmNew: true }))).data.deal.id;
+    assert.equal((await push.notifyNewDeal(match)).sent, 1);
+    const fcm = calls.find((c) => c.url.includes('fcm.googleapis.com'));
+    const msg = JSON.parse(fcm.body).message;
+    assert.equal(msg.token, 'device-token-1');
+    assert.equal(msg.data.kind, 'deal_alert');
+    assert.match(msg.data.url, new RegExp(`^/deals/${match}/qwopper-espresso-tamper-steel$`));
+    const unrelated = (await poster.post('/api/deals', dealBody('https://shop.com/pv-4', { title: 'Zentrix Garden Hose 20m', category: 'Home & Kitchen', confirmNew: true }))).data.deal.id;
+    assert.equal((await push.notifyNewDeal(unrelated)).sent, 0, 'no alert for deals outside their interests');
+    assert.equal((await viewer.del('/api/push/token', { token: 'device-token-1' })).status, 200);
+    assert.equal((await push.notifyNewDeal(match)).sent, 0, 'signed-out devices get nothing');
   });
 
   await t.test('feedback: anyone can send it, moderators read and resolve it', async () => {
