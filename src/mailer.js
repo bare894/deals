@@ -1,17 +1,47 @@
-// Outgoing email (password resets). Configured with SMTP_* variables, e.g. Zoho Mail:
-// SMTP_HOST=smtp.zoho.com SMTP_PORT=465 SMTP_USER=info@sharedeals.in SMTP_PASS=<app password>
-// SMTP_FROM="ShareDeals <info@sharedeals.in>". Without them, emails are only logged (local runs).
+// Outgoing email (password resets).
+//
+// Zoho ZeptoMail (preferred; an HTTPS API, so it works on hosts that block SMTP, like Railway):
+//   ZEPTOMAIL_TOKEN=<Send Mail token>  MAIL_FROM="ShareDeals <noreply@sharedeals.in>"
+//   ZEPTOMAIL_URL=https://api.zeptomail.in/v1.1/email for accounts in Zoho's India data centre.
+// Or SMTP: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM.
+// With neither, emails are only logged (local runs).
 import nodemailer from 'nodemailer';
 
-export function mailerFromEnv(env = process.env) {
-  if (!env.SMTP_HOST || !env.SMTP_USER || !env.SMTP_PASS) {
+/** "ShareDeals <info@sharedeals.in>" → { name, address } */
+function parseFrom(s) {
+  const m = String(s || '').match(/^\s*(?:"?([^"<]*?)"?\s*)?<([^>]+)>\s*$/);
+  return m ? { name: m[1] || undefined, address: m[2].trim() } : { address: String(s || '').trim() };
+}
+
+export function mailerFromEnv(env = process.env, fetchImpl = fetch) {
+  if (env.ZEPTOMAIL_TOKEN) {
+    const url = env.ZEPTOMAIL_URL || 'https://api.zeptomail.com/v1.1/email';
+    const token = env.ZEPTOMAIL_TOKEN.replace(/^Zoho-enczapikey\s+/i, '');
+    const from = parseFrom(env.MAIL_FROM || env.SMTP_FROM || 'ShareDeals <noreply@sharedeals.in>');
     return {
-      configured: false,
-      send: async ({ to, subject, text }) => console.log(`[mail] (not configured) to=${to} subject=${subject}\n${text}`),
+      configured: true,
+      async send({ to, subject, text }) {
+        const res = await fetchImpl(url, {
+          method: 'POST',
+          headers: { accept: 'application/json', 'content-type': 'application/json', authorization: `Zoho-enczapikey ${token}` },
+          body: JSON.stringify({ from, to: [{ email_address: { address: to } }], subject, textbody: text }),
+          signal: AbortSignal.timeout(15_000),
+        });
+        if (!res.ok) throw new Error(`ZeptoMail ${res.status}: ${(await res.text()).slice(0, 300)}`);
+      },
     };
   }
-  const port = Number(env.SMTP_PORT || 465);
-  const transport = nodemailer.createTransport({ host: env.SMTP_HOST, port, secure: port === 465, auth: { user: env.SMTP_USER, pass: env.SMTP_PASS } });
-  const from = env.SMTP_FROM || env.SMTP_USER;
-  return { configured: true, send: ({ to, subject, text }) => transport.sendMail({ from, to, subject, text }) };
+  if (env.SMTP_HOST && env.SMTP_USER && env.SMTP_PASS) {
+    const port = Number(env.SMTP_PORT || 465);
+    const transport = nodemailer.createTransport({
+      host: env.SMTP_HOST, port, secure: port === 465, auth: { user: env.SMTP_USER, pass: env.SMTP_PASS },
+      connectionTimeout: 10_000, greetingTimeout: 10_000, socketTimeout: 20_000,
+    });
+    const from = env.SMTP_FROM || env.SMTP_USER;
+    return { configured: true, send: ({ to, subject, text }) => transport.sendMail({ from, to, subject, text }) };
+  }
+  return {
+    configured: false,
+    send: async ({ to, subject, text }) => console.log(`[mail] (not configured) to=${to} subject=${subject}\n${text}`),
+  };
 }
