@@ -561,9 +561,34 @@ async function renderRoute() {
   trackPageView();
 }
 
+const SITE_TITLE = 'ShareDeals.in | Community-vetted deals in India';
+const SITE_DESC = 'Find, vote on, and share the best deals from Flipkart, Amazon, Myntra, AJIO, Nykaa, Meesho and more, vetted by the community.';
+
 function setPage(title, content) {
-  document.title = title ? `${title} — ShareDeals` : 'ShareDeals — community-vetted deals';
+  document.title = title ? `${title} | ShareDeals` : SITE_TITLE;
   app.innerHTML = String(content);
+  setMeta();
+}
+
+/**
+ * Keep the head in step with in-app navigation (the server fills it on full page loads):
+ * description, canonical link and their Open Graph twins. Only ?sort=hot changes a page's
+ * canonical URL; other query strings (search, paging) point at the page itself.
+ */
+function setMeta({ description = SITE_DESC, path } = {}) {
+  const sort = new URLSearchParams(location.search).get('sort') === 'hot' ? '?sort=hot' : '';
+  const canonical = `${location.origin}${path || location.pathname}${path ? '' : sort}`;
+  const upsert = (sel, make) => document.head.querySelector(sel) || document.head.appendChild(make());
+  upsert('meta[name="description"]', () => Object.assign(document.createElement('meta'), { name: 'description' })).content = description;
+  upsert('link[rel="canonical"]', () => Object.assign(document.createElement('link'), { rel: 'canonical' })).href = canonical;
+  for (const [prop, value] of [['og:url', canonical], ['og:title', document.title], ['og:description', description]]) {
+    const el = upsert(`meta[property="${prop}"]`, () => {
+      const m = document.createElement('meta');
+      m.setAttribute('property', prop);
+      return m;
+    });
+    el.content = value;
+  }
 }
 
 // ============================================================ pages: home (§6)
@@ -658,6 +683,8 @@ async function listingsPage({ query, alive, categorySlug = '', storeSlug = '' })
       <div class="load-more" id="load-more" hidden><button class="btn">Load more</button></div>
     `,
   );
+  if (store) setMeta({ description: `The latest ${store.name} deals, offers and price drops in India, posted and voted on by the ShareDeals community.` });
+  else if (cat) setMeta({ description: `Today's best ${cat.name} deals, offers and price drops from Amazon, Flipkart, Myntra and more, posted and voted on by the ShareDeals community.` });
   const feed = $('#feed');
   const moreBox = $('#load-more');
   let page = 0;
@@ -773,6 +800,18 @@ async function detailPage({ params, alive }) {
       box.hidden = false;
     })
     .catch(() => {});
+  // Old /deals/<id> links land on the titled URL, like a full page load would.
+  const path = dealPath(d);
+  if (location.pathname !== path) history.replaceState(history.state, '', path + location.search + location.hash);
+  const priceLine = d.price === 0 ? 'FREE' : d.price != null ? money(d.price) : '';
+  setMeta({
+    path,
+    description: [
+      priceLine && `${priceLine}${d.fullPrice > d.price ? ` (MRP ${money(d.fullPrice)}${d.discountPct ? `, ${d.discountPct}% off` : ''})` : ''} on ${d.store}`,
+      d.offerCount > 1 ? `· compare ${d.offerCount} stores` : '',
+      `· ${d.score >= 0 ? '+' : ''}${d.score} votes`,
+    ].filter(Boolean).join(' '),
+  });
   const form = $('#comment-form');
   form?.addEventListener('submit', async (e) => {
     e.preventDefault();

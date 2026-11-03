@@ -5,8 +5,8 @@ import { escapeHtml, inr } from './http.js';
 import { slugify } from './db.js';
 
 const SITE = 'ShareDeals';
-const SITE_TITLE = 'ShareDeals.in — community-vetted deals in India';
-const SITE_DESC = 'Find, vote on, and share the best deals from Flipkart, Amazon, Myntra, AJIO, Nykaa, Meesho and more — vetted by the community.';
+const SITE_TITLE = 'ShareDeals.in | Community-vetted deals in India';
+const SITE_DESC = 'Find, vote on, and share the best deals from Flipkart, Amazon, Myntra, AJIO, Nykaa, Meesho and more, vetted by the community.';
 const LIST_LIMIT = 60;
 
 // Pages that are only useful to a signed-in person, never in search results.
@@ -44,7 +44,7 @@ function dealListHtml(deals) {
   if (!deals.length) return '<p>No deals here yet.</p>';
   return `<ul class="ssr-list">${deals
     .map(
-      (d) => `<li><a href="${esc(dealPath(d))}">${esc(d.title)}</a> — ${esc(priceText(d))}${d.fullPrice > d.price ? ` <s>${esc(inr(d.fullPrice))}</s>` : ''}${d.discountPct ? ` (${d.discountPct}% off)` : ''} on ${esc(d.store || '')}</li>`,
+      (d) => `<li><a href="${esc(dealPath(d))}">${esc(d.title)}</a>: ${esc(priceText(d))}${d.fullPrice > d.price ? ` <s>${esc(inr(d.fullPrice))}</s>` : ''}${d.discountPct ? ` (${d.discountPct}% off)` : ''} on ${esc(d.store || '')}</li>`,
     )
     .join('')}</ul>`;
 }
@@ -135,7 +135,7 @@ export function createSeo({ db, repo }) {
       return {
         status: 200,
         title: `${h1}: best ${cat.name} offers & discounts in India | ${SITE}`,
-        description: `Today's best ${cat.name} deals, offers and price drops from Amazon, Flipkart, Myntra and more — posted and voted on by the ShareDeals community.`,
+        description: `Today's best ${cat.name} deals, offers and price drops from Amazon, Flipkart, Myntra and more, posted and voted on by the ShareDeals community.`,
         canonical: `${base}${path}${hot ? '?sort=hot' : ''}`,
         noindex: Boolean(query.get('q')),
         jsonld: [breadcrumbs(base, [['Home', '/'], [cat.name, path]]), itemList(base, items)],
@@ -232,11 +232,11 @@ export function createSeo({ db, repo }) {
         })),
     };
     const offerRows = offers
-      .map((o) => `<li>${esc(o.store)}: ${esc(priceText(o))}${o.fullPrice > o.price ? ` (MRP ${esc(inr(o.fullPrice))})` : ''} — <a href="${esc(o.url)}" rel="nofollow noopener">view on ${esc(o.store)}</a></li>`)
+      .map((o) => `<li>${esc(o.store)}: ${esc(priceText(o))}${o.fullPrice > o.price ? ` (MRP ${esc(inr(o.fullPrice))})` : ''}, <a href="${esc(o.url)}" rel="nofollow noopener">view on ${esc(o.store)}</a></li>`)
       .join('');
     return {
       status: 200,
-      title: `${d.title}${d.price != null ? ` at ${priceText(d)}` : ''} — ${SITE}`,
+      title: `${d.title}${d.price != null ? ` at ${priceText(d)}` : ''} | ${SITE}`,
       description: dealDescription(d),
       ogTitle: d.title,
       canonical: url,
