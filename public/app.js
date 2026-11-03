@@ -747,8 +747,21 @@ async function detailPage({ params, alive }) {
         }
         <div id="comment-list">${comments.length ? comments.map(commentItem) : html`<p class="muted" id="no-comments">No comments yet — be the first.</p>`}</div>
       </section>
+      <section class="section similar" id="similar" hidden>
+        <div class="section-head"><h2>Similar deals</h2>${d.category ? html`<a class="see-all" href="/c/${d.category.slug}">More ${d.category.name} →</a>` : ''}</div>
+        <div class="row-scroller"></div>
+      </section>
     `,
   );
+  // Similar deals load after the page so they never hold it up.
+  api(`/api/deals/${id}/similar`)
+    .then(({ items }) => {
+      if (!alive() || !items.length) return;
+      const box = $('#similar');
+      $('.row-scroller', box).innerHTML = String(html`${items.map((x) => dealCard(x))}`);
+      box.hidden = false;
+    })
+    .catch(() => {});
   const form = $('#comment-form');
   form?.addEventListener('submit', async (e) => {
     e.preventDefault();

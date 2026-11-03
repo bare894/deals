@@ -343,3 +343,5 @@ a.avatar { text-decoration: none; }
 .breadcrumbs li + li::before { content: '›'; margin-right: 6px; }
 .breadcrumbs a { color: inherit; }
 .breadcrumbs [aria-current] { color: var(--text); max-width: 40ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.similar { margin-top: 32px; }

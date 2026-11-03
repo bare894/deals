@@ -7,6 +7,8 @@ import { productScore, productTokens, confidence, MIN_SUGGEST, HIGH_CONFIDENCE }
 
 const discount = (full, price) => (full && price != null && full > price ? Math.round((1 - price / full) * 100) : null);
 
+const SIMILAR_STOPWORDS = new Set(['the', 'and', 'with', 'for', 'new', 'all', 'pack', 'set', 'combo', 'men', 'women', 'black', 'white', 'blue', 'size']);
+
 export function createRepo(db) {
   const DEAL_SELECT = `
     SELECT d.*, c.name AS category_name, c.slug AS category_slug, u.handle AS poster_handle,
@@ -131,6 +133,27 @@ export function createRepo(db) {
     }
     const items = rows.slice(0, limit).map((r) => serializeDeal(r));
     return { items: await attachMyVotes(items, user), page, hasMore: rows.length > limit };
+  }
+
+  /**
+   * Deals like this one, for the carousel under a deal page: the same category, ranked by how
+   * many title words they share (brand, product type…), then newest. At most `limit`.
+   */
+  async function similar(dealId, limit = 10) {
+    const base = await getDealRow(dealId);
+    if (!base) return [];
+    const words = (t) => new Set(String(t).toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 2 && !SIMILAR_STOPWORDS.has(w)));
+    const mine = words(base.title);
+    const rows = await db.all(
+      `${DEAL_SELECT} WHERE d.status = 'active' AND d.id <> ? ${base.category_id ? 'AND d.category_id = ?' : ''} ORDER BY d.created_at DESC LIMIT 300`,
+      dealId, ...(base.category_id ? [base.category_id] : []),
+    );
+    return rows
+      .map((r, i) => ({ r, i, shared: [...words(r.title)].filter((w) => mine.has(w)).length }))
+      .filter((x) => base.category_id || x.shared > 0)
+      .sort((a, b) => b.shared - a.shared || a.i - b.i)
+      .slice(0, limit)
+      .map((x) => serializeDeal(x.r));
   }
 
   async function latest(limit) {
@@ -419,7 +442,7 @@ export function createRepo(db) {
 
   return {
     DEAL_SELECT, serializeDeal, serializeOffer, getDealRow, getOfferRow, getDeal, dealOffers, findActiveOfferByHash, storeOnDeal,
-    attachMyVotes, listDeals, latest, hotSlice, forYou, findMatches, duplicatePairs,
+    attachMyVotes, listDeals, similar, latest, hotSlice, forYou, findMatches, duplicatePairs,
     refreshDealPricing, createDealWithOffer, addOffer, setOfferStatus, removeDeal, restoreDeal, mergeDeals, logAction, resolveReports,
   };
 }

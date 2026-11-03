@@ -26,6 +26,8 @@ export function registerDealRoutes({ route, db, repo, seo, rateLimit, scraper, r
     }),
   );
 
+  route('GET', '/api/deals/:id/similar', async ({ params, user }) => ({ items: await repo.attachMyVotes(await repo.similar(Number(params.id), 10), user) }));
+
   route('GET', '/api/stores', async () => ({ stores: await seo.stores() }));
 
   // ------------------------------------------------------------ deal detail (§8)

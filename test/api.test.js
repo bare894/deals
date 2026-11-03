@@ -243,6 +243,17 @@ test('end-to-end: auth, submit, dedup, vote, comment, bookmark, moderation', asy
     assert.equal((await client().post('/api/auth/login', { login: 'pwuser', password: 'newpassword1' })).status, 200);
   });
 
+  await t.test('similar deals: same category, most shared title words first, at most 10', async () => {
+    const mk = async (url, title) => (await poster.post('/api/deals', dealBody(url, { title, confirmNew: true }))).data.deal.id;
+    const base = await mk('https://shop.com/sim-1', 'Zorbix Turbo Blender 600W');
+    const close = await mk('https://shop.com/sim-2', 'Zorbix Turbo Blender 750W Pro');
+    await mk('https://shop.com/sim-3', 'Generic Steel Spoon');
+    const { items } = (await anon.get(`/api/deals/${base}/similar`)).data;
+    assert.equal(items[0].id, close);
+    assert.ok(items.length <= 10);
+    assert.ok(!items.some((x) => x.id === base));
+  });
+
   await t.test('feedback: anyone can send it, moderators read and resolve it', async () => {
     assert.equal((await anon.post('/api/feedback', { message: '' })).status, 400);
     assert.equal((await anon.post('/api/feedback', { message: 'Add Croma please', email: 'nope' })).status, 400);

@@ -208,9 +208,7 @@ export function createSeo({ db, repo }) {
     const url = `${base}${dealPath(d)}`;
     const image = absImage(base, d);
     const offers = (d.offers || []).filter((o) => o.status === 'active');
-    const related = d.category
-      ? (await repo.listDeals({ categorySlug: d.category.slug, limit: 9 })).items.filter((x) => x.id !== d.id).slice(0, 8)
-      : [];
+    const related = await repo.similar(d.id, 10);
     const crumbs = [['Home', '/'], d.category ? [d.category.name, `/c/${d.category.slug}`] : ['All deals', '/deals'], [d.title, dealPath(d)]];
     const product = {
       '@context': 'https://schema.org',
@@ -255,7 +253,7 @@ export function createSeo({ db, repo }) {
         ${d.details ? `<p>${esc(d.details)}</p>` : ''}
         ${offerRows ? `<h2>Where to buy</h2><ul>${offerRows}</ul>` : ''}
         <p>Posted by @${esc(d.poster.handle || 'deleted user')} · ${d.commentCount} comments</p></article>
-        ${related.length ? `<h2>More ${esc(d.category.name)} deals</h2>${dealListHtml(related)}` : ''}`,
+        ${related.length ? `<h2>Similar deals</h2>${dealListHtml(related)}` : ''}`,
     };
   }
 
