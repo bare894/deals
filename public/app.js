@@ -595,7 +595,8 @@ async function homePage({ alive }) {
         </div>
         <aside class="home-hot section" aria-label="Hot deals">
           <div class="section-head"><h2>🔥 Hot Deals</h2><a class="see-all" href="/deals?sort=hot">See all →</a></div>
-          <p class="muted small" style="margin:-6px 0 10px">Most upvoted right now</p>
+          <div class="hot-box">
+          <p class="muted small hot-sub">Most upvoted right now</p>
           ${data.hot.length
             ? html`<ol class="hot-list">${data.hot.map(
                 (d) => html`<li><a href="/deals/${d.id}">
@@ -604,7 +605,8 @@ async function homePage({ alive }) {
                   <span class="hot-score" title="Score">▲ ${d.score}</span>
                 </a></li>`,
               )}</ol>`
-            : html`<p class="muted">Nothing here yet.</p>`}
+            : html`<p class="muted" style="margin:0">Nothing here yet.</p>`}
+          </div>
         </aside>
       </div>
     `,

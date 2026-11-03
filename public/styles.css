@@ -316,7 +316,11 @@ a.avatar { text-decoration: none; }
 
 /* Home: personalised and latest deals on the left, a Hot Deals column on the right. */
 .home-layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 24px; align-items: start; }
-.home-hot { position: sticky; top: 76px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 14px; }
+/* The heading sits outside the box, level with "For You", so the box lines up with the cards. */
+.home-hot { position: sticky; top: 76px; }
+.hot-box { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 8px; }
+.hot-box > .muted { padding: 8px; margin: 0; }
+.hot-box > .hot-sub { padding: 6px 8px 0; }
 .hot-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
 .hot-list a { display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px; border-radius: 10px; color: inherit; text-decoration: none; }
 .hot-list a:hover { background: var(--surface-2); }

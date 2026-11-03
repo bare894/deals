@@ -74,7 +74,7 @@ export function registerAuthRoutes({ route, db, rateLimit, mailer, publicBase, s
     mailer.send({
       to: u.email,
       subject: 'Reset your ShareDeals password',
-      text: `Hi @${u.handle},\n\nSomeone (hopefully you) asked to reset the password for your ShareDeals account. Open this link within an hour to choose a new one:\n\n${link}\n\nIf you didn't ask for this, ignore this email. Your password won't change.\n\n— ShareDeals.in`,
+      text: `Hi @${u.handle},\n\nSomeone (hopefully you) asked to reset the password for your ShareDeals account. Open this link within an hour to choose a new one:\n\n${link}\n\nIf you didn't ask for this, ignore this email. Your password won't change.\n\n- ShareDeals.in`,
     }).catch((err) => console.error(`[mail] password reset to user ${u.id} failed: ${err.message}`));
     return sent;
   });
