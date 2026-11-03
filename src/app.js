@@ -93,7 +93,8 @@ export function createApp({
 
   // ------------------------------------------------------------ responses
 
-  function send(res, status, body, headers = {}) {
+  /** `cacheKey` (static files only) lets the compressed copy be reused; it must change when the content does. */
+  function send(res, status, body, headers = {}, cacheKey = null) {
     const isJson = typeof body !== 'string' && !Buffer.isBuffer(body);
     const all = {
       ...SECURITY_HEADERS,
@@ -106,7 +107,7 @@ export function createApp({
       const accept = String(res.req?.headers['accept-encoding'] || '');
       const enc = /\bbr\b/.test(accept) ? 'br' : /\bgzip\b/.test(accept) ? 'gzip' : null;
       if (enc) {
-        out = compressed(out, enc);
+        out = compressed(out, enc, cacheKey);
         all['content-encoding'] = enc;
       }
       all.vary = 'Accept-Encoding';
@@ -115,12 +116,12 @@ export function createApp({
     res.end(res.req?.method === 'HEAD' ? undefined : out);
   }
 
-  // Static files are compressed once per version; everything else on the fly.
+  // Static files are compressed once per version (keyed by path, size and mtime); everything else on the fly.
   const compressCache = new Map();
-  function compressed(body, enc) {
-    const buf = Buffer.isBuffer(body) ? body : Buffer.from(body);
-    const key = buf.length > 4096 ? `${enc}:${buf.length}:${buf.subarray(0, 64).toString('base64')}:${buf.subarray(-64).toString('base64')}` : null;
+  function compressed(body, enc, cacheKey) {
+    const key = cacheKey && `${enc}:${cacheKey}`;
     if (key && compressCache.has(key)) return compressCache.get(key);
+    const buf = Buffer.isBuffer(body) ? body : Buffer.from(body);
     const out = enc === 'br' ? brotliCompressSync(buf, { params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 5 } }) : gzipSync(buf);
     if (key) {
       if (compressCache.size > 200) compressCache.clear();
@@ -164,7 +165,7 @@ export function createApp({
         res.end();
         return true;
       }
-      send(res, 200, await readFile(file), headers);
+      send(res, 200, await readFile(file), headers, `${file}:${etag}`);
       return true;
     } catch {
       return false;
