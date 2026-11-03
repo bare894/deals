@@ -863,7 +863,7 @@ async function detailPage({ params, alive }) {
           </div>
           <div class="actions">
             ${voteWidget(d, { large: true })}
-            ${best ? html`<a class="btn btn-primary btn-lg" href="${best.url}" target="_blank" rel="noopener noreferrer nofollow sponsored ugc" data-track="get_deal" data-deal-id="${d.id}" data-store="${best.store}">Get deal on ${best.store} ↗</a>` : ''}
+            ${best ? html`<a class="btn btn-primary btn-lg" href="${best.buyUrl}" target="_blank" rel="noopener noreferrer nofollow sponsored ugc" data-track="get_deal" data-deal-id="${d.id}" data-store="${best.store}">Get deal on ${best.store} ↗</a>` : ''}
           </div>
           <div class="actions" style="margin-top:0">
             ${removed ? '' : html`<button class="btn ${d.bookmarked ? 'on' : ''}" data-action="bookmark" data-id="${d.id}" aria-pressed="${d.bookmarked}">♡ <span class="lbl">${d.bookmarked ? 'Saved' : 'Save'}</span></button>`}

@@ -1,6 +1,7 @@
 // Data access for deals (products) and offers (store listings). Routes stay thin; every
 // multi-row invariant (best price cache, merge, remove/restore) lives here.
 import { tx } from './db.js';
+import { buyUrl } from './affiliate.js';
 import { HttpError, cents, escapeLike, isUniqueViolation } from './http.js';
 import { rankHot, rankForYou, categoryAffinity, interestProfile, hasInterests, HOT_WINDOW_MS } from './ranking.js';
 import { productScore, productTokens, confidence, MIN_SUGGEST, HIGH_CONFIDENCE } from './matching.js';
@@ -9,7 +10,7 @@ const discount = (full, price) => (full && price != null && full > price ? Math.
 
 const SIMILAR_STOPWORDS = new Set(['the', 'and', 'with', 'for', 'new', 'all', 'pack', 'set', 'combo', 'men', 'women', 'black', 'white', 'blue', 'size']);
 
-export function createRepo(db) {
+export function createRepo(db, { amazonTag = null } = {}) {
   const DEAL_SELECT = `
     SELECT d.*, c.name AS category_name, c.slug AS category_slug, u.handle AS poster_handle,
            (SELECT COUNT(*) FROM comments cm WHERE cm.deal_id = d.id AND cm.status = 'visible') AS comment_count
@@ -30,6 +31,7 @@ export function createRepo(db) {
       store: o.store,
       storeKey: o.store_key,
       url: o.source_url,
+      buyUrl: buyUrl(o.source_url, o.canonical_url, { amazonTag }),
       price,
       fullPrice,
       discountPct: discount(fullPrice, price),

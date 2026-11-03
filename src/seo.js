@@ -233,7 +233,7 @@ export function createSeo({ db, repo }) {
         })),
     };
     const offerRows = offers
-      .map((o) => `<li>${esc(o.store)}: ${esc(priceText(o))}${o.fullPrice > o.price ? ` (MRP ${esc(inr(o.fullPrice))})` : ''}, <a href="${esc(o.url)}" rel="nofollow noopener">view on ${esc(o.store)}</a></li>`)
+      .map((o) => `<li>${esc(o.store)}: ${esc(priceText(o))}${o.fullPrice > o.price ? ` (MRP ${esc(inr(o.fullPrice))})` : ''}, <a href="${esc(o.buyUrl)}" rel="nofollow noopener sponsored">view on ${esc(o.store)}</a></li>`)
       .join('');
     return {
       status: 200,

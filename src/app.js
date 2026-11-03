@@ -20,6 +20,7 @@ import { registerAdminRoutes } from './routes/admin.js';
 import { registerFeedbackRoutes } from './routes/feedback.js';
 import { registerHealthRoutes } from './routes/health.js';
 import { createOAuth, oauthConfigFromEnv } from './oauth.js';
+import { amazonTagFromEnv } from './affiliate.js';
 
 export { HttpError };
 
@@ -75,6 +76,7 @@ export function createApp({
   publicUrl = process.env.PUBLIC_URL,
   oauth: oauthConfig = oauthConfigFromEnv(),
   approvedStores = APPROVED_STORES,
+  amazonTag = amazonTagFromEnv(),
   oauthFetch,
   // Only the live site pings search engines; tests and local runs never do.
   indexNow: indexNowEnabled = process.env.NODE_ENV === 'production',
@@ -85,7 +87,7 @@ export function createApp({
   alertJob = process.env.NODE_ENV === 'production',
 }) {
   const { route, match } = createRouter();
-  const repo = createRepo(db);
+  const repo = createRepo(db, { amazonTag });
   const rateLimit = makeRateLimiter(RATE_LIMITS, rateLimits);
   const oauth = createOAuth({ db, config: oauthConfig, secureCookies, baseUrl: (req) => baseUrl(req), rateLimit, fetchImpl: oauthFetch });
   const seo = createSeo({ db, repo });

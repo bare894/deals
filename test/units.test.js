@@ -5,6 +5,7 @@ import { extractDealFields, isPrivateIp, parsePrice, storeFromHost, autoPopulate
 import { matchesPhrase, phraseWords } from '../src/alerts.js';
 import { hotScore, rankHot, rankForYou, categoryAffinity, interestProfile } from '../src/ranking.js';
 import { clientIp } from '../src/http.js';
+import { buyUrl, amazonTagFromEnv } from '../src/affiliate.js';
 
 test('canonicalization strips tracking noise but keeps product identity', () => {
   const base = 'https://bestbuy.com/site/sony-wh1000xm5/6505727.p?skuId=6505727';
@@ -240,4 +241,21 @@ test('only approved stores can be posted; short links are judged by where they l
 
   assert.equal(await ok('https://amzn.in/d/abc', 'https://www.amazon.in/dp/B0GP8SY9MB'), 'amazon.in');
   await refused('https://bit.ly/xyz', 'https://www.randomshop.com/p/1');
+});
+
+test('Amazon links get our affiliate tag, replacing the poster\'s; other stores are untouched', () => {
+  const opts = { amazonTag: 'sharedeals-21' };
+  const posted = 'https://www.amazon.in/Google-Pixel-10a/dp/B0FXYZ1234/ref=sr_1_1?tag=someone-21&ascsubtag=x&th=1';
+  const canon = canonicalizeUrl(posted);
+  assert.equal(buyUrl(posted, canon, opts), 'https://www.amazon.in/dp/B0FXYZ1234?tag=sharedeals-21');
+  // No tag configured: the link stays exactly as posted.
+  assert.equal(buyUrl(posted, canon, {}), posted);
+  // Non-product Amazon pages keep their path; the poster's tag is swapped for ours.
+  const dealsPage = 'https://www.amazon.in/deals?tag=someone-21&ref_=nav';
+  assert.equal(buyUrl(dealsPage, canonicalizeUrl(dealsPage), opts), 'https://www.amazon.in/deals?tag=sharedeals-21');
+  const fk = 'https://www.flipkart.com/pixel-10a/p/itm123?pid=MOB123&affid=someone';
+  assert.equal(buyUrl(fk, canonicalizeUrl(fk), opts), fk);
+  assert.equal(amazonTagFromEnv({ AMAZON_ASSOCIATE_TAG: ' sharedeals-21 ' }), 'sharedeals-21');
+  assert.equal(amazonTagFromEnv({ AMAZON_ASSOCIATE_TAG: 'bad tag"><' }), null);
+  assert.equal(amazonTagFromEnv({}), null);
 });

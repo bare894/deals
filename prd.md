@@ -251,7 +251,7 @@ Available to any signed-in user on the website, the Android app, and via the ext
 
 **Built.** A deal represents a **product** (e.g. "Google Pixel 10a 256 GB"). Each store's link is an **offer** on that deal with its own price and MRP.
 - One active offer per store per deal.
-- Offers keep the poster's exact URL, so any affiliate tag they used survives.
+- Offers store the poster's exact URL. **Amazon.in links are shown with ShareDeals' own Amazon Associates tag** (when `AMAZON_ASSOCIATE_TAG` is set), replacing any tag the poster used; other stores' links are shown as posted.
 - The deal's headline price and store come from its cheapest active offer.
 - Moderators can remove or restore individual offers.
 
@@ -428,7 +428,7 @@ Prices are stored as integer paise; timestamps as epoch milliseconds. Schema cha
 
 - A separate native or standalone app for Admins/Moderators.
 - **Price-drop alerts** and automated expiry detection. *(Alerts for **new** deals are now in scope, §13a. Automated expiry from user downvotes is planned, §11.)*
-- Monetization (affiliate programs, sponsored placements). *Offers keep the poster's own URL, so affiliate tags pass through, but ShareDeals doesn't add its own.*
+- Sponsored placements and display ads. *(Amazon affiliate links are now built, §9.5; other stores' affiliate programs are planned.)*
 - Threaded comment replies and comment upvoting.
 - Browser (web push) notifications.
 
@@ -467,7 +467,7 @@ Prices are stored as integer paise; timestamps as epoch milliseconds. Schema cha
 **New open questions**
 1. How many "Expired" downvote reasons should auto-expire a deal, and should they count against the poster? (§11)
 2. When to list the extension in the Chrome Web Store / Edge Add-ons.
-3. Should ShareDeals add its own affiliate tags, and if so, how is that disclosed?
+3. Which affiliate programs to use for Flipkart, Myntra and the other stores (direct programs or an aggregator such as Cuelinks)?
 
 ## 21. Phasing & Status
 
