@@ -4,7 +4,9 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ShareDeals: offline</title>
 <style>
-  body { font: 16px/1.5 system-ui, sans-serif; margin: 0; display: grid; place-items: center; min-height: 100vh; background: #fff; color: #1d1d1b; text-align: center; }
+  /* Bundled with the app so the offline screen matches the site's font without a connection. */
+  @font-face { font-family: 'Google Sans Flex'; font-weight: 400 800; src: url(google-sans-flex-latin.woff2) format('woff2'); }
+  body { font: 16px/1.5 'Google Sans Flex', system-ui, sans-serif; margin: 0; display: grid; place-items: center; min-height: 100vh; background: #fff; color: #1d1d1b; text-align: center; }
   img { width: 180px; margin-bottom: 16px; }
   a { display: inline-block; margin-top: 16px; padding: 12px 22px; border-radius: 10px; background: #ec0276; color: #fff; text-decoration: none; font-weight: 600; }
   @media (prefers-color-scheme: dark) { body { background: #141413; color: #ecebe7; } }
