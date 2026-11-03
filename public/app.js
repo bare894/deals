@@ -670,7 +670,7 @@ async function renderRoute() {
   trackPageView();
 }
 
-const SITE_TITLE = 'ShareDeals.in | Community-vetted deals in India';
+const SITE_TITLE = 'ShareDeals.in | The Best Online Deals and Bargains in India';
 const SITE_DESC = 'Find and share the best deals on India\'s top online stores: Amazon, Flipkart, Myntra, AJIO, Nykaa, Meesho and more, voted on by the community.';
 
 function setPage(title, content) {
