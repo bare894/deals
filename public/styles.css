@@ -304,6 +304,9 @@ td.actions-cell .btn + .btn { margin-left: 6px; }
 .legal h2 { font-size: 18px; margin: 24px 0 8px; }
 .legal li { margin: 4px 0; }
 a.avatar { text-decoration: none; }
+/* `.nav a` padding/radius/hover would otherwise turn the round avatar into a grey square. */
+.nav a.avatar { width: 32px; height: 32px; padding: 0; border-radius: 50%; background: var(--accent-soft); color: var(--accent-text); font-size: 14px; line-height: 1; }
+.nav a.avatar:hover, .nav a.avatar.active { background: var(--accent); color: var(--accent-ink); }
 /* Inside the Android app the system shows its own back button and share sheet. */
 .in-app .skip-link { display: none; }
 
