@@ -444,6 +444,8 @@ const ROUTES = [
   [/^\/saved$/, savedPage],
   [/^\/login$/, loginPage],
   [/^\/register$/, registerPage],
+  [/^\/forgot-password$/, forgotPasswordPage],
+  [/^\/reset-password$/, resetPasswordPage],
   [/^\/account$/, accountPage],
   [/^\/account\/delete$/, deleteAccountPage],
   [/^\/privacy$/, privacyPage],
@@ -1130,7 +1132,8 @@ async function loginPage({ query }) {
       <form id="login-form">
         <div class="form-error" hidden></div>
         <div class="field"><label for="l-login">Email or username</label><input id="l-login" name="login" autocomplete="username" required autofocus></div>
-        <div class="field"><label for="l-pw">Password</label><input id="l-pw" name="password" type="password" autocomplete="current-password" required></div>
+        <div class="field"><label for="l-pw">Password</label><input id="l-pw" name="password" type="password" autocomplete="current-password" required>
+          <a class="small" href="/forgot-password" style="display:inline-block;margin-top:6px">Forgot password?</a></div>
         <button class="btn btn-primary" style="width:100%">Sign in</button>
       </form>
       <p class="muted small" style="text-align:center">New here? <a href="/register?next=${encodeURIComponent(nextUrl(query))}">Create an account</a></p>
@@ -1139,6 +1142,80 @@ async function loginPage({ query }) {
   );
   authForm('#login-form', '/api/auth/login', query);
   showOAuthError($('#login-form'), query);
+}
+
+async function forgotPasswordPage() {
+  setPage(
+    'Forgot password',
+    html`<div class="panel narrow"><h1 style="margin-top:0">Forgot your password?</h1>
+      <p class="muted">Enter your account's email and we'll send you a link to choose a new password.</p>
+      <form id="forgot-form">
+        <div class="form-error" hidden></div>
+        <div class="field"><label for="f-email">Email</label><input id="f-email" name="email" type="email" autocomplete="email" required></div>
+        <button class="btn btn-primary" style="width:100%">Send reset link</button>
+      </form>
+      <p class="muted small" style="text-align:center"><a href="/login">Back to sign in</a></p>
+    </div>`,
+  );
+  const form = $('#forgot-form');
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errBox = $('.form-error', form);
+    const btn = $('button', form);
+    errBox.hidden = true;
+    btn.disabled = true;
+    try {
+      const { message } = await api('/api/auth/forgot', { method: 'POST', body: { email: form.email.value } });
+      form.outerHTML = String(html`<p class="notice info">${message}</p>`);
+    } catch (err) {
+      errBox.hidden = false;
+      errBox.textContent = err.message;
+      btn.disabled = false;
+    }
+  });
+}
+
+async function resetPasswordPage({ query }) {
+  const token = query.get('token') || '';
+  setPage(
+    'Choose a new password',
+    html`<div class="panel narrow"><h1 style="margin-top:0">Choose a new password</h1>
+      ${token
+        ? html`<form id="reset-form">
+            <div class="form-error" hidden></div>
+            <div class="field"><label for="r-new">New password</label><input id="r-new" name="password" type="password" autocomplete="new-password" minlength="8" required></div>
+            <div class="field"><label for="r-confirm">Confirm new password</label><input id="r-confirm" name="confirm" type="password" autocomplete="new-password" minlength="8" required></div>
+            <button class="btn btn-primary" style="width:100%">Set new password</button>
+          </form>`
+        : html`<p class="form-error">This reset link is incomplete. <a href="/forgot-password">Ask for a new one</a>.</p>`}
+    </div>`,
+  );
+  const form = $('#reset-form');
+  form?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errBox = $('.form-error', form);
+    const btn = $('button', form);
+    errBox.hidden = true;
+    if (form.password.value !== form.confirm.value) {
+      errBox.hidden = false;
+      errBox.textContent = "The passwords don't match";
+      return;
+    }
+    btn.disabled = true;
+    try {
+      await api('/api/auth/reset', { method: 'POST', body: { token, password: form.password.value } });
+      // Keep the token out of browser history once it's used.
+      history.replaceState(null, '', '/reset-password');
+      state.user = null;
+      renderChrome();
+      toast('Password changed. Sign in with your new password.');
+      navigate('/login', { replace: true });
+    } catch (err) {
+      errBox.hidden = false;
+      errBox.innerHTML = String(html`${err.message} <a href="/forgot-password">Ask for a new link</a>.`);
+      btn.disabled = false;
+    }
+  });
 }
 
 async function registerPage({ query }) {

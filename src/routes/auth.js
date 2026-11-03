@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { tx } from '../db.js';
 import { HttpError, str, isUniqueViolation } from '../http.js';
 import { createSession, destroySession, hashPassword, sessionCookie, verifyPassword } from '../auth.js';
@@ -6,7 +6,10 @@ import { APPROVED_STORES, publicUser } from './common.js';
 
 const DELETE_PHRASE = 'DELETE MY ACCOUNT';
 
-export function registerAuthRoutes({ route, db, rateLimit, secureCookies, oauthProviders = [], approvedStores = APPROVED_STORES }) {
+const RESET_TTL_MS = 60 * 60 * 1000;
+const sha256 = (s) => createHash('sha256').update(s).digest('hex');
+
+export function registerAuthRoutes({ route, db, rateLimit, mailer, publicBase, secureCookies, oauthProviders = [], approvedStores = APPROVED_STORES }) {
   route('GET', '/api/meta', async ({ user }) => ({
     user: publicUser(user),
     oauth: oauthProviders,
@@ -47,6 +50,48 @@ export function registerAuthRoutes({ route, db, rateLimit, secureCookies, oauthP
     return { user: publicUser(row) };
   });
 
+  /**
+   * Forgot password, step 1: email a one-hour reset link. Always answers the same way, so it
+   * can't be used to find out which emails have accounts.
+   */
+  route('POST', '/api/auth/forgot', async ({ body, ip }) => {
+    rateLimit('forgot', ip);
+    const email = str(body.email, 'Email', { required: true, max: 200 }).toLowerCase();
+    rateLimit('forgot', `email:${email}`);
+    const sent = { ok: true, message: 'If an account uses that email, we have sent a link to reset the password. Check your inbox and spam folder.' };
+    if (!mailer.configured && process.env.NODE_ENV === 'production') {
+      throw new HttpError(503, 'Password reset by email is not available yet. Please email info@sharedeals.in for help.');
+    }
+    const u = await db.get("SELECT id, handle, email FROM users WHERE lower(email) = ? AND status IN ('active', 'suspended')", email);
+    if (!u) return sent;
+    const token = randomBytes(32).toString('base64url');
+    const now = Date.now();
+    await db.run('DELETE FROM password_resets WHERE user_id = ?', u.id);
+    await db.run('INSERT INTO password_resets (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)', sha256(token), u.id, now, now + RESET_TTL_MS);
+    const link = `${publicBase()}/reset-password?token=${token}`;
+    await mailer.send({
+      to: u.email,
+      subject: 'Reset your ShareDeals password',
+      text: `Hi @${u.handle},\n\nSomeone (hopefully you) asked to reset the password for your ShareDeals account. Open this link within an hour to choose a new one:\n\n${link}\n\nIf you didn't ask for this, ignore this email. Your password won't change.\n\n— ShareDeals.in`,
+    });
+    return sent;
+  });
+
+  /** Forgot password, step 2: set a new password with the emailed token. Signs out everywhere. */
+  route('POST', '/api/auth/reset', async ({ body, ip }) => {
+    rateLimit('login', ip);
+    const row = await db.get('SELECT * FROM password_resets WHERE token_hash = ?', sha256(String(body.token || '')));
+    if (!row || row.used_at || row.expires_at < Date.now()) throw new HttpError(400, 'This reset link is invalid or has expired. Ask for a new one.');
+    const password = typeof body.password === 'string' ? body.password : '';
+    if (password.length < 8) throw new HttpError(400, 'Password must be at least 8 characters');
+    await tx(db, async () => {
+      await db.run('UPDATE users SET password_hash = ? WHERE id = ?', hashPassword(password), row.user_id);
+      await db.run('UPDATE password_resets SET used_at = ? WHERE token_hash = ?', Date.now(), row.token_hash);
+      await db.run('DELETE FROM sessions WHERE user_id = ?', row.user_id);
+    });
+    return { ok: true };
+  });
+
   /** Change my password. Needs the current one; signs out every other session. Usernames can't be changed. */
   route('POST', '/api/me/password', { auth: true }, async ({ body, user, token }) => {
     const { password_hash: hash } = await db.get('SELECT password_hash FROM users WHERE id = ?', user.id);
@@ -85,7 +130,7 @@ export function registerAuthRoutes({ route, db, rateLimit, secureCookies, oauthP
           WHERE d.id = v.deal_id`,
         user.id,
       );
-      for (const table of ['votes', 'bookmarks', 'views', 'comments', 'sessions', 'oauth_identities', 'app_login_codes', 'feedback']) {
+      for (const table of ['votes', 'bookmarks', 'views', 'comments', 'sessions', 'oauth_identities', 'app_login_codes', 'feedback', 'password_resets']) {
         await db.run(`DELETE FROM ${table} WHERE user_id = ?`, user.id);
       }
       await db.run('DELETE FROM reports WHERE reporter_id = ?', user.id);

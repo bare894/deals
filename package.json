@@ -16,6 +16,7 @@
     "migrate": "node --disable-warning=ExperimentalWarning src/migrate.js"
   },
   "dependencies": {
+    "nodemailer": "^6.9.16",
     "pg": "^8.23.1"
   },
   "devDependencies": {

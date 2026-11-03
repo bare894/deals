@@ -10,9 +10,9 @@ const SITE_DESC = 'Find, vote on, and share the best deals from Flipkart, Amazon
 const LIST_LIMIT = 60;
 
 // Pages that are only useful to a signed-in person, never in search results.
-const PRIVATE = /^\/(admin|account|submit|saved|login|register)(\/|$)|^\/deals\/\d+\/edit$/;
+const PRIVATE = /^\/(admin|account|submit|saved|login|register|forgot-password|reset-password)(\/|$)|^\/deals\/\d+\/edit$/;
 // Every path the SPA knows; anything else is a real 404.
-const KNOWN = /^\/(deals|submit|saved|login|register|account|account\/delete|privacy|terms|delete-account|feedback|admin(\/\w+)?|deals\/\d+(\/[a-z0-9-]+)?|c\/[a-z0-9-]+|store\/[a-z0-9-]+)?$/;
+const KNOWN = /^\/(deals|submit|saved|login|register|forgot-password|reset-password|account|account\/delete|privacy|terms|delete-account|feedback|admin(\/\w+)?|deals\/\d+(\/[a-z0-9-]+)?|c\/[a-z0-9-]+|store\/[a-z0-9-]+)?$/;
 
 export function dealSlug(title) {
   const s = slugify(title);
@@ -291,6 +291,8 @@ export function createSeo({ db, repo }) {
       'Disallow: /saved',
       'Disallow: /login',
       'Disallow: /register',
+      'Disallow: /forgot-password',
+      'Disallow: /reset-password',
       'Disallow: /auth/',
       'Disallow: /deals/*/edit',
       'Disallow: /deals?q=',

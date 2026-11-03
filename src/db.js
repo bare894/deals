@@ -202,9 +202,20 @@ CREATE TABLE feedback (
 );
 CREATE INDEX feedback_status ON feedback(status, created_at DESC);
 `,
+  // 4: forgot-password links (only a hash of the emailed token is stored)
+  `
+CREATE TABLE password_resets (
+  token_hash TEXT PRIMARY KEY,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at BIGINT NOT NULL,
+  expires_at BIGINT NOT NULL,
+  used_at    BIGINT
+);
+CREATE INDEX password_resets_user ON password_resets(user_id);
+`,
 ];
 
-const TABLES = ['feedback', 'app_login_codes', 'moderation_actions', 'reports', 'views', 'bookmarks', 'comments', 'votes', 'offers', 'deals', 'categories', 'sessions', 'oauth_identities', 'users', 'schema_migrations'];
+const TABLES = ['password_resets', 'feedback', 'app_login_codes', 'moderation_actions', 'reports', 'views', 'bookmarks', 'comments', 'votes', 'offers', 'deals', 'categories', 'sessions', 'oauth_identities', 'users', 'schema_migrations'];
 const INT8 = 20;
 
 /** `?` → `$n`, skipping quoted strings/identifiers. Cached: the SQL texts are a fixed set. */

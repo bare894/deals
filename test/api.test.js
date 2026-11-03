@@ -12,6 +12,7 @@ let server;
 let base;
 let db;
 
+const sentMail = [];
 before(async () => {
   // In-memory Postgres (PGlite) by default; TEST_DATABASE_URL runs against a real server (wiped first).
   db = await openDb(process.env.TEST_DATABASE_URL || null);
@@ -31,6 +32,7 @@ before(async () => {
     rateLimits: false,
     approvedStores: null, // the suite posts from stand-in shops; the store allowlist has its own test
     resolveUrl: async (u) => u,
+    mailer: { configured: true, send: async (m) => void sentMail.push(m) },
     scraper: async () => ({ ok: true, reason: null, fields: { title: 'Scraped Title', imageUrl: 'https://cdn.x.com/i.jpg', price: 10, fullPrice: 20, store: 'Shop' } }),
   });
   server = http.createServer(app);
@@ -252,6 +254,26 @@ test('end-to-end: auth, submit, dedup, vote, comment, bookmark, moderation', asy
     assert.equal(items[0].id, close);
     assert.ok(items.length <= 10);
     assert.ok(!items.some((x) => x.id === base));
+  });
+
+  await t.test('forgot password: emailed one-time link sets a new password and signs out everywhere', async () => {
+    const me = client();
+    assert.equal((await me.post('/api/auth/register', { email: 'forgot@t.test', handle: 'forgetful', password: 'oldpassword1' })).status, 200);
+    sentMail.length = 0;
+    const unknown = await client().post('/api/auth/forgot', { email: 'nobody@t.test' });
+    assert.equal(unknown.status, 200, 'same answer for unknown emails');
+    assert.equal(sentMail.length, 0);
+    assert.equal((await client().post('/api/auth/forgot', { email: 'Forgot@T.test' })).status, 200);
+    assert.equal(sentMail.length, 1);
+    assert.equal(sentMail[0].to, 'forgot@t.test');
+    const token = sentMail[0].text.match(/reset-password\?token=([\w-]+)/)[1];
+    assert.equal((await client().post('/api/auth/reset', { token: 'bogus', password: 'newpassword1' })).status, 400);
+    assert.equal((await client().post('/api/auth/reset', { token, password: 'short' })).status, 400);
+    assert.equal((await client().post('/api/auth/reset', { token, password: 'newpassword1' })).status, 200);
+    assert.equal((await client().post('/api/auth/reset', { token, password: 'another12345' })).status, 400, 'links work once');
+    assert.equal((await me.get('/api/me/bookmarks')).status, 401, 'signed out everywhere');
+    assert.equal((await client().post('/api/auth/login', { login: 'forgetful', password: 'newpassword1' })).status, 200);
+    assert.equal((await client().post('/api/auth/login', { login: 'forgetful', password: 'oldpassword1' })).status, 401);
   });
 
   await t.test('feedback: anyone can send it, moderators read and resolve it', async () => {
