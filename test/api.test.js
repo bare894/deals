@@ -229,6 +229,20 @@ test('end-to-end: auth, submit, dedup, vote, comment, bookmark, moderation', asy
     assert.equal(restore.status, 409);
   });
 
+  await t.test('change password: needs the current one, signs out other sessions', async () => {
+    const me = client();
+    assert.equal((await me.post('/api/auth/register', { email: 'pw@t.test', handle: 'pwuser', password: 'oldpassword1' })).status, 200);
+    const other = client();
+    assert.equal((await other.post('/api/auth/login', { login: 'pwuser', password: 'oldpassword1' })).status, 200);
+    assert.equal((await me.post('/api/me/password', { current: 'wrong', password: 'newpassword1' })).status, 401);
+    assert.equal((await me.post('/api/me/password', { current: 'oldpassword1', password: 'short' })).status, 400);
+    assert.equal((await me.post('/api/me/password', { current: 'oldpassword1', password: 'newpassword1' })).status, 200);
+    assert.equal((await me.get('/api/me/bookmarks')).status, 200, 'this session stays signed in');
+    assert.equal((await other.get('/api/me/bookmarks')).status, 401, 'other sessions are signed out');
+    assert.equal((await client().post('/api/auth/login', { login: 'pwuser', password: 'oldpassword1' })).status, 401);
+    assert.equal((await client().post('/api/auth/login', { login: 'pwuser', password: 'newpassword1' })).status, 200);
+  });
+
   await t.test('feedback: anyone can send it, moderators read and resolve it', async () => {
     assert.equal((await anon.post('/api/feedback', { message: '' })).status, 400);
     assert.equal((await anon.post('/api/feedback', { message: 'Add Croma please', email: 'nope' })).status, 400);

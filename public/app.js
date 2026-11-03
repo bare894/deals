@@ -1165,14 +1165,57 @@ async function accountPage() {
       </p>
       <p class="muted small"><a href="/feedback">Send feedback</a> · <a href="/privacy">Privacy Policy</a> · <a href="/terms">Terms</a> · <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
       <hr style="border:0;border-top:1px solid var(--border);margin:24px 0">
+      <h2 style="font-size:18px">Change password</h2>
+      ${u.hasPassword
+        ? html`<form id="password-form">
+            <div class="form-error" hidden></div>
+            <div class="field"><label for="p-current">Current password</label>
+              <input id="p-current" name="current" type="password" autocomplete="current-password" required></div>
+            <div class="field"><label for="p-new">New password</label>
+              <input id="p-new" name="password" type="password" autocomplete="new-password" minlength="8" required></div>
+            <div class="field"><label for="p-confirm">Confirm new password</label>
+              <input id="p-confirm" name="confirm" type="password" autocomplete="new-password" minlength="8" required></div>
+            <button class="btn">Change password</button>
+          </form>`
+        : html`<p class="muted small">You sign in with Google or Facebook, so there's no password to change.</p>`}
+      <p class="muted small">Your username @${u.handle} can't be changed.</p>
+      <hr style="border:0;border-top:1px solid var(--border);margin:24px 0">
       <h2 style="font-size:18px">Delete account</h2>
       <p class="muted small">Permanently delete your account and personal data.</p>
       <a class="btn btn-danger" href="/account/delete">Delete account…</a>
     </div>`,
   );
+  bindPasswordForm();
 }
 
 const DELETE_PHRASE = 'DELETE MY ACCOUNT';
+
+function bindPasswordForm() {
+  const form = $('#password-form');
+  if (!form) return;
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errBox = $('.form-error', form);
+    const btn = $('button', form);
+    errBox.hidden = true;
+    if (form.password.value !== form.confirm.value) {
+      errBox.hidden = false;
+      errBox.textContent = "The new passwords don't match";
+      return;
+    }
+    btn.disabled = true;
+    try {
+      await api('/api/me/password', { method: 'POST', body: { current: form.current.value, password: form.password.value } });
+      form.reset();
+      toast('Password changed. Other devices have been signed out.');
+    } catch (err) {
+      errBox.hidden = false;
+      errBox.textContent = err.message;
+    } finally {
+      btn.disabled = false;
+    }
+  });
+}
 
 async function deleteAccountPage() {
   if (!state.user) return goLogin();

@@ -47,6 +47,20 @@ export function registerAuthRoutes({ route, db, rateLimit, secureCookies, oauthP
     return { user: publicUser(row) };
   });
 
+  /** Change my password. Needs the current one; signs out every other session. Usernames can't be changed. */
+  route('POST', '/api/me/password', { auth: true }, async ({ body, user, token }) => {
+    const { password_hash: hash } = await db.get('SELECT password_hash FROM users WHERE id = ?', user.id);
+    if (!hash) throw new HttpError(400, 'Your account signs in with Google or Facebook, so it has no password to change.');
+    rateLimit('login', `password:${user.id}`);
+    if (!verifyPassword(String(body.current || ''), hash)) throw new HttpError(401, 'Your current password is incorrect');
+    const password = typeof body.password === 'string' ? body.password : '';
+    if (password.length < 8) throw new HttpError(400, 'New password must be at least 8 characters');
+    if (password === body.current) throw new HttpError(400, 'New password must be different from your current one');
+    await db.run('UPDATE users SET password_hash = ? WHERE id = ?', hashPassword(password), user.id);
+    await db.run('DELETE FROM sessions WHERE user_id = ? AND token <> ?', user.id, token);
+    return { ok: true };
+  });
+
   /**
    * Delete my account (Google Play requires this in-app, plus a web page: /delete-account).
    * Personal data goes: email, sign-ins, sessions, comments, votes, saves, views, reports.
