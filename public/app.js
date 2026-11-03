@@ -698,6 +698,11 @@ async function detailPage({ params, alive }) {
     d.title,
     html`
       ${removed ? html`<div class="banner removed">This deal was removed by a moderator and is only visible to moderators.</div>` : ''}
+      <nav class="breadcrumbs" aria-label="Breadcrumb"><ol>
+        <li><a href="/">Home</a></li>
+        ${d.category ? html`<li><a href="/c/${d.category.slug}">${d.category.name}</a></li>` : html`<li><a href="/deals">All deals</a></li>`}
+        <li aria-current="page">${d.title}</li>
+      </ol></nav>
       <article class="detail">
         <div class="detail-media"><img src="${d.imageUrl || placeholder(d.store)}" data-label="${d.store}" alt="${d.title}"></div>
         <div>

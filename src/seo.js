@@ -211,7 +211,7 @@ export function createSeo({ db, repo }) {
     const related = d.category
       ? (await repo.listDeals({ categorySlug: d.category.slug, limit: 9 })).items.filter((x) => x.id !== d.id).slice(0, 8)
       : [];
-    const crumbs = [['Home', '/'], ...(d.category ? [[d.category.name, `/c/${d.category.slug}`]] : []), [d.title, dealPath(d)]];
+    const crumbs = [['Home', '/'], d.category ? [d.category.name, `/c/${d.category.slug}`] : ['All deals', '/deals'], [d.title, dealPath(d)]];
     const product = {
       '@context': 'https://schema.org',
       '@type': 'Product',
@@ -249,7 +249,7 @@ export function createSeo({ db, repo }) {
         ['product:price:currency', 'INR'],
       ],
       jsonld: [...(product.offers.length ? [product] : []), breadcrumbs(base, crumbs)],
-      body: `<article><nav aria-label="Breadcrumb">${crumbs.map(([n, p]) => `<a href="${esc(p)}">${esc(n)}</a>`).join(' › ')}</nav>
+      body: `<article><nav class="breadcrumbs" aria-label="Breadcrumb"><ol>${crumbs.map(([n, p], i) => (i === crumbs.length - 1 ? `<li aria-current="page">${esc(n)}</li>` : `<li><a href="${esc(p)}">${esc(n)}</a></li>`)).join('')}</ol></nav>
         <h1>${esc(d.title)}</h1>
         <p>${esc(dealDescription(d))}</p>
         ${d.details ? `<p>${esc(d.details)}</p>` : ''}
