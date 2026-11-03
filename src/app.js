@@ -9,6 +9,7 @@ import { createRepo } from './repo.js';
 import { createSeo } from './seo.js';
 import { INDEXNOW_KEY, createIndexNow } from './indexnow.js';
 import { mailerFromEnv } from './mailer.js';
+import { sizedImage } from '../public/meta.js';
 import { APPROVED_STORES, ROLE_RANK } from './routes/common.js';
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerDealRoutes } from './routes/deals.js';
@@ -188,6 +189,26 @@ export function createApp({
     if (!/^application\/json\b/i.test(req.headers['content-type'] || '')) throw new HttpError(415, 'Content-Type must be application/json');
   }
 
+  /**
+   * The API answers the first screen needs, embedded in the page so the app can render without
+   * waiting on more round trips: site meta everywhere, plus the home feed on the home page.
+   * Anything that fails is simply left out; the app then fetches it as usual.
+   */
+  async function bootData(req, pathname) {
+    const paths = ['/api/meta', ...(pathname === '/' ? ['/api/home'] : [])];
+    const user = await userForToken(db, parseCookies(req.headers.cookie)[SESSION_COOKIE]).catch(() => null);
+    const out = {};
+    for (const p of paths) {
+      try {
+        const { route: r, params } = match('GET', p);
+        out[p] = await r.handler({ req, params, query: new URLSearchParams(), body: {}, user, token: null, ip: clientIp(req), setCookie: () => {} });
+      } catch {
+        /* the app fetches it */
+      }
+    }
+    return out;
+  }
+
   async function handleApi(req, res, url) {
     const { method } = req;
     const { route: r, params } = match(method, url.pathname);
@@ -244,7 +265,17 @@ export function createApp({
       // crawlers and link previews (src/seo.js). Merged deals and old URLs redirect.
       const p = await seo.page(baseUrl(req), pathname, url.searchParams);
       if (p.redirect) return send(res, p.status, '', { location: p.redirect });
-      return send(res, p.status, seo.render(await indexHtml(), baseUrl(req), p), { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-cache' });
+      const boot = await bootData(req, pathname);
+      if (pathname === '/' && boot['/api/home']?.forYou?.[0]?.imageUrl && !p.preloadImage) {
+        const img = boot['/api/home'].forYou[0].imageUrl;
+        p.preloadImage = { href: sizedImage(img, 300), srcset: sizedImage(img, 300) !== img ? `${sizedImage(img, 300)} 1x, ${sizedImage(img, 600)} 2x` : null };
+      }
+      const page = seo.render(await indexHtml(), baseUrl(req), p).replace(
+        '</body>',
+        () => `<script type="application/json" id="boot-data">${JSON.stringify(boot).replace(/</g, '\\u003c')}</script>\n  </body>`,
+      );
+      // Personal (signed-in) data is embedded, so shared caches must not keep it.
+      return send(res, p.status, page, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'private, no-cache' });
     } catch (err) {
       if (err instanceof HttpError) return send(res, err.status, { error: err.message, ...err.extra });
       // Malformed or out-of-range ids in the URL (Postgres: invalid_text_representation, numeric_value_out_of_range).

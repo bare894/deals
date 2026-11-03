@@ -25,7 +25,22 @@ const state = { user: null, categories: [] };
 let routeSeq = 0;
 let pageCleanup = null;
 
+// API answers the server embedded in the first page load (see bootData in src/app.js). Each is
+// used once, for the first render; after that the app fetches as normal.
+const bootData = (() => {
+  try {
+    return JSON.parse(document.getElementById('boot-data')?.textContent || '{}');
+  } catch {
+    return {};
+  }
+})();
+
 async function api(path, { method = 'GET', body } = {}) {
+  if (method === 'GET' && path in bootData) {
+    const data = bootData[path];
+    delete bootData[path];
+    return data;
+  }
   const opts = { method, headers: {}, credentials: 'same-origin' };
   if (method !== 'GET') {
     opts.headers['content-type'] = 'application/json';
