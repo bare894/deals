@@ -237,14 +237,18 @@ function priceBlock(d, { mrpLabel = false } = {}) {
   </div>`;
 }
 
+// Thumbs icons (Lucide, ISC licence); drawn in currentColor so the voted state can recolour them.
+const ICON_UP = html`<svg class="ico-thumb" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"/></svg>`;
+const ICON_DOWN = html`<svg class="ico-thumb" viewBox="0 0 24 24" aria-hidden="true"><path d="M17 14V2"/><path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z"/></svg>`;
+
 function voteWidget(d, { large = false } = {}) {
   const mine = d.myVote || 0;
   const own = state.user && d.poster && state.user.id === d.poster.id;
   const dis = own ? html`disabled title="You can't vote on your own deal"` : '';
   return html`<div class="vote ${large ? 'lg' : ''}" data-vote-for="${d.id}" data-my="${mine}">
-    <button class="vote-btn up ${mine === 1 ? 'on' : ''}" data-action="vote" data-id="${d.id}" data-value="1" aria-label="Upvote" aria-pressed="${mine === 1}" ${dis}>▲</button>
+    <button class="vote-btn up ${mine === 1 ? 'on' : ''}" data-action="vote" data-id="${d.id}" data-value="1" aria-label="Upvote" aria-pressed="${mine === 1}" ${dis}>${ICON_UP}</button>
     <span class="vote-score" aria-label="Net score">${d.score}</span>
-    <button class="vote-btn down ${mine === -1 ? 'on' : ''}" data-action="vote" data-id="${d.id}" data-value="-1" aria-label="Downvote" aria-pressed="${mine === -1}" ${dis}>▼</button>
+    <button class="vote-btn down ${mine === -1 ? 'on' : ''}" data-action="vote" data-id="${d.id}" data-value="-1" aria-label="Downvote" aria-pressed="${mine === -1}" ${dis}>${ICON_DOWN}</button>
   </div>`;
 }
 
@@ -671,7 +675,7 @@ async function homePage({ alive }) {
                 (d) => html`<li><a href="${dealPath(d)}">
                   <img ${productImg(d.imageUrl, 80, d.store)} data-label="${d.store}" alt="">
                   <span class="hot-body"><span class="card-store">${d.store}</span><span class="hot-title">${d.title}</span>${priceBlock(d)}</span>
-                  <span class="hot-score" title="Score">▲ ${d.score}</span>
+                  <span class="hot-score" title="Score">${ICON_UP} ${d.score}</span>
                 </a></li>`,
               )}</ol>`
             : html`<p class="muted" style="margin:0">Nothing here yet.</p>`}

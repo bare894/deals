@@ -170,6 +170,10 @@ th .th-sort:hover { color: var(--text, inherit); }
 .vote-score { min-width: 28px; text-align: center; font-weight: 800; color: var(--text); font-variant-numeric: tabular-nums; }
 .vote.lg { padding: 4px; }
 .vote.lg .vote-btn { width: 40px; height: 40px; font-size: 17px; }
+.ico-thumb { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; display: block; }
+.vote.lg .ico-thumb { width: 20px; height: 20px; }
+.hot-score { display: inline-flex; align-items: center; gap: 4px; }
+.hot-score .ico-thumb { width: 13px; height: 13px; }
 .vote.lg .vote-score { min-width: 44px; font-size: 20px; }
 
 /* ---------- deal detail ---------- */
