@@ -334,7 +334,7 @@ a.avatar { text-decoration: none; }
   .home-layout { grid-template-columns: minmax(0, 1fr); }
   .home-hot { position: static; order: -1; }
   .home-main { display: contents; }
-  .home-main > .section:first-child { order: -2; }
+  .home-main > .foryou { order: -2; }
 }
 
 /* Server-rendered page content for crawlers; the app replaces it as soon as it loads. */

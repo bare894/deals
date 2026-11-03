@@ -266,8 +266,10 @@ export function createApp({
       const p = await seo.page(baseUrl(req), pathname, url.searchParams);
       if (p.redirect) return send(res, p.status, '', { location: p.redirect });
       const boot = await bootData(req, pathname);
-      if (pathname === '/' && boot['/api/home']?.forYou?.[0]?.imageUrl && !p.preloadImage) {
-        const img = boot['/api/home'].forYou[0].imageUrl;
+      // Home's largest image: the first For You card when signed in, else the first Latest card.
+      const homeFirst = boot['/api/meta']?.user ? boot['/api/home']?.forYou?.[0] : boot['/api/home']?.latest?.[0];
+      if (pathname === '/' && homeFirst?.imageUrl && !p.preloadImage) {
+        const img = homeFirst.imageUrl;
         p.preloadImage = { href: sizedImage(img, 300), srcset: sizedImage(img, 300) !== img ? `${sizedImage(img, 300)} 1x, ${sizedImage(img, 600)} 2x` : null };
       }
       const page = seo.render(await indexHtml(), baseUrl(req), p).replace(

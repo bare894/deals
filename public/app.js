@@ -638,11 +638,9 @@ async function homePage({ alive }) {
     <div class="section-head"><h2>${title}</h2><span class="muted small">${sub}</span>${href ? html`<a class="see-all" href="${href}">See all →</a>` : ''}</div>
     ${items.length ? html`<div class="row-scroller">${items.map((d, i) => dealCard(d, { ...opts, priority: i < 2 }))}</div>` : html`<p class="muted">Nothing here yet.</p>`}
   </section>`;
-  const fySub = data.forYouPersonalized
-    ? 'Based on what you vote on, save, and view'
-    : state.user
-      ? 'Trending for now — vote on or save a few deals to personalize this'
-      : 'Trending for now — sign in to personalize';
+  // For You only means something once we know who's looking; signed-out visitors don't get it.
+  const showForYou = Boolean(state.user);
+  const fySub = data.forYouPersonalized ? 'Based on what you vote on, save, and view' : 'Trending for now: vote on or save a few deals to personalize this';
   setPage(
     '',
     html`
@@ -652,10 +650,10 @@ async function homePage({ alive }) {
       </nav>
       <div class="home-layout">
         <div class="home-main">
-          ${section('For You', fySub, data.forYou, null)}
+          ${showForYou ? html`<div class="foryou">${section('For You', fySub, data.forYou, null)}</div>` : ''}
           <section class="section">
             <div class="section-head"><h2>Latest</h2><span class="muted small">Fresh from the community</span></div>
-            ${data.latest.length ? html`<div class="grid">${data.latest.map((d) => dealCard(d))}</div>` : html`<p class="muted">Nothing here yet.</p>`}
+            ${data.latest.length ? html`<div class="grid">${data.latest.map((d, i) => dealCard(d, { priority: !showForYou && i < 2 }))}</div>` : html`<p class="muted">Nothing here yet.</p>`}
             ${data.latest.length ? html`<div class="load-more"><a class="btn" href="/deals">See all deals →</a></div>` : ''}
           </section>
         </div>
