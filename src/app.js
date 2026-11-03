@@ -10,6 +10,7 @@ import { createSeo } from './seo.js';
 import { INDEXNOW_KEY, createIndexNow } from './indexnow.js';
 import { mailerFromEnv } from './mailer.js';
 import { createPush } from './push.js';
+import { registerAlertRoutes, scheduleAlertJob } from './alerts.js';
 import { sizedImage } from '../public/meta.js';
 import { APPROVED_STORES, ROLE_RANK } from './routes/common.js';
 import { registerAuthRoutes } from './routes/auth.js';
@@ -80,6 +81,8 @@ export function createApp({
   mailer = mailerFromEnv(),
   pushEnv = process.env,
   pushFetch,
+  // The hourly alerts job runs in the live server only (tests call runAlertJob directly).
+  alertJob = process.env.NODE_ENV === 'production',
 }) {
   const { route, match } = createRouter();
   const repo = createRepo(db);
@@ -94,6 +97,8 @@ export function createApp({
   registerOfferRoutes(ctx);
   registerAdminRoutes(ctx);
   registerFeedbackRoutes(ctx);
+  registerAlertRoutes(ctx);
+  if (alertJob) scheduleAlertJob({ db, repo, push });
   registerHealthRoutes(ctx);
 
   // ------------------------------------------------------------ responses

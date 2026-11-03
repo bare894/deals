@@ -107,9 +107,14 @@ th .th-sort:hover { color: var(--text, inherit); }
   .tabbar a.active { color: var(--accent-text); }
   .tabbar a.post .ico { background: var(--accent); color: var(--accent-ink); border-radius: 10px; width: 34px; height: 26px; display: grid; place-items: center; font-size: 18px; }
   .topbar-inner { gap: 10px; }
+  /* Phones and the app: the full logo with the name, a little smaller; the search box takes the rest. */
+  .logo img { height: 32px; }
+  .search { min-width: 0; }
+}
+/* Only the narrowest phones fall back to the cart mark alone. */
+@media (max-width: 340px) {
   .logo .logo-full { display: none; }
   .logo .logo-mark { display: flex; }
-  .logo img { height: 36px; }
 }
 
 /* ---------- buttons & forms ---------- */
@@ -379,3 +384,15 @@ a.avatar { text-decoration: none; }
 .feedback-tab:hover { background: var(--accent-hover); }
 .feedback-tab[hidden] { display: none; }
 @media (max-width: 760px) { .feedback-tab { padding: 10px 6px; font-size: 12px; } }
+
+/* Alerts tab */
+.alert-add { display: flex; gap: 8px; }
+.alert-add .input { flex: 1; min-width: 0; }
+.alert-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 8px; }
+.alert-list li { border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; }
+.alert-view { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.alert-phrase { font-weight: 700; flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.alert-actions { display: flex; gap: 6px; margin-left: auto; }
+.alert-edit { display: flex; gap: 6px; align-items: center; }
+.alert-edit .input { flex: 1; min-width: 0; padding: 6px 10px; }
+button.linkish { background: none; border: 0; padding: 0; font: inherit; color: var(--accent-text); cursor: pointer; text-decoration: underline; }

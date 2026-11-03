@@ -132,7 +132,7 @@ export function registerAuthRoutes({ route, db, rateLimit, mailer, publicBase, s
           WHERE d.id = v.deal_id`,
         user.id,
       );
-      for (const table of ['votes', 'bookmarks', 'views', 'comments', 'sessions', 'oauth_identities', 'app_login_codes', 'feedback', 'password_resets', 'page_views', 'push_tokens', 'push_log']) {
+      for (const table of ['votes', 'bookmarks', 'views', 'comments', 'sessions', 'oauth_identities', 'app_login_codes', 'feedback', 'password_resets', 'page_views', 'push_tokens', 'push_log', 'alerts']) {
         await db.run(`DELETE FROM ${table} WHERE user_id = ?`, user.id);
       }
       await db.run('DELETE FROM reports WHERE reporter_id = ?', user.id);

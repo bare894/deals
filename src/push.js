@@ -77,6 +77,30 @@ export function createPush({ db, repo, env = process.env, fetchImpl = fetch, log
   }
 
   /**
+   * Push one message to every device a user has signed in on. Logs it (push_log, and GA's
+   * `<kind>_sent` when GA_API_SECRET is set); drops tokens Firebase says are gone. Returns
+   * whether any device took it.
+   */
+  async function sendToUser(userId, message, { dealId = null, kind = 'match' } = {}) {
+    if (!enabled) return false;
+    const tokens = await db.all('SELECT token FROM push_tokens WHERE user_id = ?', userId);
+    if (!tokens.length) return false;
+    let delivered = false;
+    for (const { token } of tokens) {
+      try {
+        const result = await sendToToken(token, message);
+        if (result === 'gone') await db.run('DELETE FROM push_tokens WHERE token = ?', token);
+        else delivered = true;
+      } catch (err) {
+        log.error(`[push] ${kind} to user ${userId}: ${err.message}`);
+      }
+    }
+    await db.run('INSERT INTO push_log (user_id, deal_id, status, sent_at, kind) VALUES (?, ?, ?, ?, ?)', userId, dealId, delivered ? 'sent' : 'failed', Date.now(), kind);
+    if (delivered) await gaEvent(userId, kind === 'search_alert' ? 'search_alert_sent' : 'deal_alert_sent', { deal_id: dealId ?? 0 });
+    return delivered;
+  }
+
+  /**
    * A deal was just posted: alert app users it's a strong match for. Skips the poster, anyone
    * who's already had MAX_ALERTS_PER_DAY alerts in the last 24 hours, and users with no
    * interests yet. Runs in the background; never throws.
@@ -91,7 +115,7 @@ export function createPush({ db, repo, env = process.env, fetchImpl = fetch, log
       const users = await db.all(
         `SELECT DISTINCT t.user_id FROM push_tokens t JOIN users u ON u.id = t.user_id
           WHERE u.status = 'active' AND t.user_id <> ?
-            AND (SELECT COUNT(*) FROM push_log l WHERE l.user_id = t.user_id AND l.status = 'sent' AND l.sent_at > ?) < ?`,
+            AND (SELECT COUNT(*) FROM push_log l WHERE l.user_id = t.user_id AND l.kind = 'match' AND l.status = 'sent' AND l.sent_at > ?) < ?`,
         row.submitted_by, Date.now() - DAY, MAX_ALERTS_PER_DAY,
       );
       const price = deal.price === 0 ? 'FREE' : deal.price != null ? `₹${cents(row.best_price_cents).toLocaleString('en-IN')}` : '';
@@ -103,22 +127,7 @@ export function createPush({ db, repo, env = process.env, fetchImpl = fetch, log
       for (const { user_id: userId } of users) {
         const profile = await repo.userInterests(userId);
         if (!hasInterests(profile) || interestMatch(row, profile) < ALERT_THRESHOLD) continue;
-        const tokens = await db.all('SELECT token FROM push_tokens WHERE user_id = ?', userId);
-        let delivered = false;
-        for (const { token } of tokens) {
-          try {
-            const result = await sendToToken(token, message);
-            if (result === 'gone') await db.run('DELETE FROM push_tokens WHERE token = ?', token);
-            else delivered = true;
-          } catch (err) {
-            log.error(`[push] deal ${dealId} to user ${userId}: ${err.message}`);
-          }
-        }
-        await db.run('INSERT INTO push_log (user_id, deal_id, status, sent_at) VALUES (?, ?, ?, ?)', userId, dealId, delivered ? 'sent' : 'failed', Date.now());
-        if (delivered) {
-          sent++;
-          await gaEvent(userId, 'deal_alert_sent', { deal_id: deal.id, store: deal.store || '', category: deal.category?.name || '' });
-        }
+        if (await sendToUser(userId, message, { dealId, kind: 'match' })) sent++;
       }
     } catch (err) {
       log.error(`[push] deal ${dealId}: ${err.message}`);
@@ -126,5 +135,5 @@ export function createPush({ db, repo, env = process.env, fetchImpl = fetch, log
     return { sent };
   }
 
-  return { enabled, notifyNewDeal };
+  return { enabled, notifyNewDeal, sendToUser };
 }

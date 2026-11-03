@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { canonicalizeUrl, parseDealUrl } from '../src/canonicalize.js';
 import { extractDealFields, isPrivateIp, parsePrice, storeFromHost, autoPopulate, findMrp, guessCategory } from '../src/scrape.js';
+import { matchesPhrase, phraseWords } from '../src/alerts.js';
 import { hotScore, rankHot, rankForYou, categoryAffinity, interestProfile } from '../src/ranking.js';
 import { clientIp } from '../src/http.js';
 
@@ -147,6 +148,15 @@ test('for-you: page views pull in deals like the ones visited, across categories
   // A deal opened in the last few days drops behind one they haven't seen.
   const seenAgain = { id: 1, title: 'Sony WH-1000XM5 Wireless Headphones', category_id: 2, score: 1, created_at: now - H, best_store: 'Amazon' };
   assert.equal(rankForYou([seenAgain, sony], profile, now)[0].id, 's');
+});
+
+test('alert phrases match whole-word starts in any order', () => {
+  const m = (title, phrase) => matchesPhrase(title, phraseWords(phrase));
+  assert.equal(m('Apple iPhone 15 (Black, 128 GB)', 'iphone 15'), true);
+  assert.equal(m('Apple iPhone 15 (Black, 128 GB)', '15 apple'), true);
+  assert.equal(m('Apple iPhone 15 (Black, 128 GB)', 'phone'), false, 'not mid-word');
+  assert.equal(m('Apple iPhone 15 (Black, 128 GB)', 'iphone 16'), false);
+  assert.equal(m('LEGO Technic Koenigsegg', 'lego tech'), true, 'word starts count');
 });
 
 test('client IP: socket address by default; behind trusted proxies, the hop they appended', () => {

@@ -441,7 +441,7 @@ function renderChrome() {
     <nav class="nav">
       <a href="/deals?sort=hot" class="hide-sm" data-nav="/deals" data-sort="hot">Hot</a>
       <a href="/deals" class="hide-sm" data-nav="/deals" data-sort="new">All deals</a>
-      ${u ? html`<a href="/saved" class="hide-sm" data-nav="/saved">Saved</a>` : ''}
+      ${u ? html`<a href="/saved" class="hide-sm" data-nav="/saved">Saved</a><a href="/alerts" class="hide-sm" data-nav="/alerts">Alerts</a>` : ''}
       ${isMod() ? html`<a href="/admin" class="hide-sm" data-nav="/admin">Admin</a>` : ''}
       <a href="/submit" class="btn btn-primary btn-sm hide-sm">+ Post a deal</a>
       ${
@@ -454,7 +454,7 @@ function renderChrome() {
   </div>`);
   $('#tabbar').innerHTML = String(html`
     <a href="/" data-nav="/"><span class="ico">⌂</span>Home</a>
-    <a href="/deals" data-nav="/deals"><span class="ico">☰</span>Deals</a>
+    <a href="/alerts" data-nav="/alerts"><span class="ico">🔔</span>Alerts</a>
     <a href="/submit" class="post" data-nav="/submit"><span class="ico">+</span>Post</a>
     <a href="/saved" data-nav="/saved"><span class="ico">♡</span>Saved</a>
     ${u ? html`<a href="/account" data-nav="/account"><span class="ico">☺</span>Account</a>` : html`<a href="/login" data-nav="/login"><span class="ico">☺</span>Sign in</a>`}
@@ -488,6 +488,7 @@ const ROUTES = [
   [/^\/deals\/(\d+)\/edit$/, editPage],
   [/^\/submit$/, submitPage],
   [/^\/saved$/, savedPage],
+  [/^\/alerts$/, alertsPage],
   [/^\/login$/, loginPage],
   [/^\/register$/, registerPage],
   [/^\/forgot-password$/, forgotPasswordPage],
@@ -532,15 +533,15 @@ async function setupDealAlerts() {
       });
       nativeListen('PushNotifications', 'pushNotificationActionPerformed', ({ notification }) => {
         const data = notification?.data || {};
-        if (data.kind !== 'deal_alert') return;
-        track('deal_alert_open', { deal_id: data.deal_id });
+        if (data.kind !== 'deal_alert' && data.kind !== 'search_alert') return;
+        track(data.kind === 'search_alert' ? 'search_alert_open' : 'deal_alert_open', { deal_id: data.deal_id });
         if (data.url?.startsWith('/')) navigate(data.url);
       });
       // Alerts arriving while the app is open aren't shown by Android: show them in the app.
       nativeListen('PushNotifications', 'pushNotificationReceived', (notification) => {
         const data = notification?.data || {};
-        if (data.kind !== 'deal_alert') return;
-        track('deal_alert_received', { deal_id: data.deal_id, app_state: 'foreground' });
+        if (data.kind !== 'deal_alert' && data.kind !== 'search_alert') return;
+        track(`${data.kind}_received`, { deal_id: data.deal_id, app_state: 'foreground' });
         toast(notification.title || 'A deal you might like');
       });
     }
@@ -764,7 +765,7 @@ async function listingsPage({ query, alive, categorySlug = '', storeSlug = '' })
     heading,
     html`
       <div class="page-head">
-        <div><h1>${heading}</h1>${q ? html`<a class="small muted" href="${link({ q: '' })}">Clear search</a>` : ''}</div>
+        <div><h1>${heading}</h1>${q ? html`<a class="small muted" href="${link({ q: '' })}">Clear search</a> · <button class="linkish small" id="alert-from-search">🔔 Alert me about “${q}”</button>` : ''}</div>
         <nav class="tabs" style="border:0;margin:0" aria-label="Sort">
           <a href="${link({ sort: '' })}" class="${sort === 'new' ? 'active' : ''}">Newest</a>
           <a href="${link({ sort: 'hot' })}" class="${sort === 'hot' ? 'active' : ''}">🔥 Hot</a>
@@ -781,6 +782,7 @@ async function listingsPage({ query, alive, categorySlug = '', storeSlug = '' })
   );
   if (store) setMeta({ description: `The latest ${store.name} deals, offers and price drops in India, posted and voted on by the ShareDeals community.` });
   else if (cat) setMeta({ description: `Today's best ${cat.name} deals, offers and price drops from Amazon, Flipkart, Myntra and more, posted and voted on by the ShareDeals community.` });
+  $('#alert-from-search')?.addEventListener('click', () => createAlert(q));
   const feed = $('#feed');
   const moreBox = $('#load-more');
   let page = 0;
@@ -1194,6 +1196,104 @@ async function editPage({ params, alive }) {
 }
 
 // ============================================================ pages: wishlist (§13)
+
+// ============================================================ pages: alerts
+
+/** Save a search phrase as an alert (from search results or the Alerts tab). */
+async function createAlert(phrase) {
+  if (!state.user) return goLogin();
+  try {
+    await api('/api/alerts', { method: 'POST', body: { phrase } });
+    track('alert_create', { phrase });
+    toast(native ? `Alert saved. We'll notify you about new “${phrase}” deals.` : `Alert saved for “${phrase}”`);
+    if (location.pathname === '/alerts') renderRoute();
+    setupDealAlerts();
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+}
+
+async function alertsPage({ alive }) {
+  if (!state.user) {
+    return setPage(
+      'Alerts',
+      emptyState('Get alerts for deals you want', 'Sign in to save searches like “iphone 15” or “lego technic” and get notified when matching deals are posted.', html`<a class="btn btn-primary" href="/login?next=/alerts">Sign in</a>`),
+    );
+  }
+  const { items, max } = await api('/api/alerts');
+  if (!alive()) return;
+  const full = items.length >= max;
+  setPage(
+    'Alerts',
+    html`<div class="panel narrow alerts-page">
+      <h1 style="margin-top:0">Alerts</h1>
+      <p class="muted">Save a search and we'll let you know when a matching deal is posted. We check for new deals every hour.${native ? '' : ' Notifications are sent in the ShareDeals Android app.'}</p>
+      <form id="alert-form" class="alert-add">
+        <input class="input" name="phrase" placeholder="${full ? `You've used all ${max} alerts` : 'e.g. iphone 15, air fryer, lego technic'}" maxlength="60" minlength="2" required ${full ? 'disabled' : ''} aria-label="Search phrase">
+        <button class="btn btn-primary" ${full ? 'disabled' : ''}>Add alert</button>
+      </form>
+      <p class="muted small">${items.length} of ${max} alerts used${full ? '. Delete one to add another.' : ''}</p>
+      ${items.length
+        ? html`<ul class="alert-list">${items.map(
+            (a) => html`<li data-id="${a.id}">
+              <div class="alert-view">
+                <span class="alert-phrase">🔔 ${a.phrase}</span>
+                <span class="muted small">${a.matches ? `${a.matches} match${a.matches === 1 ? '' : 'es'} so far` : 'No matches yet'}</span>
+                <span class="alert-actions">
+                  <a class="btn btn-sm" href="/deals?q=${encodeURIComponent(a.phrase)}">See deals</a>
+                  <button class="btn btn-sm" data-alert="edit">Edit</button>
+                  <button class="btn btn-sm btn-danger" data-alert="delete">Delete</button>
+                </span>
+              </div>
+              <form class="alert-edit" hidden>
+                <input class="input" name="phrase" value="${a.phrase}" maxlength="60" minlength="2" required aria-label="Edit alert">
+                <button class="btn btn-sm btn-primary">Save</button>
+                <button type="button" class="btn btn-sm" data-alert="cancel">Cancel</button>
+              </form>
+            </li>`,
+          )}</ul>`
+        : html`<p class="muted">No alerts yet. Add one above, or search for something and tap “Alert me”.</p>`}
+    </div>`,
+  );
+  $('#alert-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    createAlert(e.target.phrase.value.trim());
+  });
+  const list = $('.alert-list');
+  list?.addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-alert]');
+    if (!btn) return;
+    const li = btn.closest('li');
+    const id = li.dataset.id;
+    if (btn.dataset.alert === 'edit' || btn.dataset.alert === 'cancel') {
+      const editing = btn.dataset.alert === 'edit';
+      $('.alert-view', li).hidden = editing;
+      $('.alert-edit', li).hidden = !editing;
+      if (editing) $('.alert-edit input', li).focus();
+    } else if (btn.dataset.alert === 'delete') {
+      try {
+        await api(`/api/alerts/${id}`, { method: 'DELETE' });
+        track('alert_delete');
+        toast('Alert deleted');
+        renderRoute();
+      } catch (err) {
+        toast(err.message, 'error');
+      }
+    }
+  });
+  list?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const li = e.target.closest('li');
+    try {
+      await api(`/api/alerts/${li.dataset.id}`, { method: 'PATCH', body: { phrase: e.target.phrase.value.trim() } });
+      track('alert_edit');
+      toast('Alert updated');
+      renderRoute();
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  });
+}
 
 async function savedPage({ query, alive }) {
   if (!state.user) return goLogin();

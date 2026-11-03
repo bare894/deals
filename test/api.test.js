@@ -1,6 +1,7 @@
 import { generateKeyPairSync } from 'node:crypto';
 import { createPush } from '../src/push.js';
 import { createRepo } from '../src/repo.js';
+import { runAlertJob, matchesPhrase, phraseWords } from '../src/alerts.js';
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -325,6 +326,48 @@ test('end-to-end: auth, submit, dedup, vote, comment, bookmark, moderation', asy
     assert.equal((await push.notifyNewDeal(unrelated)).sent, 0, 'no alert for deals outside their interests');
     assert.equal((await viewer.del('/api/push/token', { token: 'device-token-1' })).status, 200);
     assert.equal((await push.notifyNewDeal(match)).sent, 0, 'signed-out devices get nothing');
+  });
+
+  await t.test('alerts: add, edit, delete, at most 10, matched hourly and pushed once', async () => {
+    const me = client();
+    assert.equal((await me.post('/api/auth/register', { email: 'alerts@t.test', handle: 'alerter', password: 'password123' })).status, 200);
+    assert.equal((await anon.get('/api/alerts')).status, 401);
+    const add = await me.post('/api/alerts', { phrase: '  Glimbo   Kettle ' });
+    assert.equal(add.status, 200);
+    assert.equal(add.data.alert.phrase, 'Glimbo Kettle');
+    assert.equal((await me.post('/api/alerts', { phrase: 'glimbo kettle' })).status, 409, 'no duplicates');
+    assert.equal((await me.post('/api/alerts', { phrase: 'x' })).status, 400);
+    for (let i = 2; i <= 10; i++) assert.equal((await me.post('/api/alerts', { phrase: `thing ${i}` })).status, 200);
+    const eleventh = await me.post('/api/alerts', { phrase: 'one too many' });
+    assert.equal(eleventh.status, 400);
+    assert.match(eleventh.data.error, /up to 10 alerts/);
+    const list = (await me.get('/api/alerts')).data;
+    assert.equal(list.items.length, 10);
+    assert.equal(list.max, 10);
+    const thing2 = list.items.find((a) => a.phrase === 'thing 2');
+    assert.equal((await me.patch(`/api/alerts/${thing2.id}`, { phrase: 'Zorpo Lamp' })).status, 200);
+    const thing3 = list.items.find((a) => a.phrase === 'thing 3');
+    assert.equal((await me.del(`/api/alerts/${thing3.id}`)).status, 200);
+    assert.equal((await poster.del(`/api/alerts/${thing2.id}`)).status, 404, "can't touch someone else's alert");
+    assert.equal((await me.get('/api/alerts')).data.items.length, 9);
+
+    // The hourly job: matching deals posted after the alert, one push per user, never twice.
+    const meRow = await db.get("SELECT id FROM users WHERE handle = 'alerter'");
+    const pushes = [];
+    const push = { sendToUser: async (userId, message, opts) => (pushes.push({ userId, message, opts }), true) };
+    const kettle = (await poster.post('/api/deals', dealBody('https://shop.com/al-1', { title: 'Glimbo Electric Kettle 1.7L', confirmNew: true }))).data.deal.id;
+    await poster.post('/api/deals', dealBody('https://shop.com/al-2', { title: 'Unrelated Toaster', confirmNew: true }));
+    const r1 = await runAlertJob({ db, repo: createRepo(db), push, log: {} });
+    assert.equal(r1.matches, 1);
+    assert.equal(pushes.length, 1);
+    assert.equal(pushes[0].userId, meRow.id);
+    assert.match(pushes[0].message.title, /Glimbo Kettle/);
+    assert.equal(pushes[0].message.data.deal_id, String(kettle));
+    assert.equal(pushes[0].message.data.kind, 'search_alert');
+    const r2 = await runAlertJob({ db, repo: createRepo(db), push, log: {} });
+    assert.equal(r2.matches, 0, 'a deal is announced once per alert');
+    assert.equal(pushes.length, 1);
+    assert.equal((await me.get('/api/alerts')).data.items.find((a) => a.phrase === 'Glimbo Kettle').matches, 1);
   });
 
   await t.test('feedback: anyone can send it, moderators read and resolve it', async () => {
