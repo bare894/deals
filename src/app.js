@@ -6,6 +6,7 @@ import { SESSION_COOKIE, parseCookies, userForToken } from './auth.js';
 import { HttpError, clientIp, createRouter, escapeHtml, makeRateLimiter, readJson } from './http.js';
 import { createRepo } from './repo.js';
 import { createSeo } from './seo.js';
+import { INDEXNOW_KEY, createIndexNow } from './indexnow.js';
 import { APPROVED_STORES, ROLE_RANK } from './routes/common.js';
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerDealRoutes } from './routes/deals.js';
@@ -68,12 +69,15 @@ export function createApp({
   oauth: oauthConfig = oauthConfigFromEnv(),
   approvedStores = APPROVED_STORES,
   oauthFetch,
+  // Only the live site pings search engines; tests and local runs never do.
+  indexNow: indexNowEnabled = process.env.NODE_ENV === 'production',
 }) {
   const { route, match } = createRouter();
   const repo = createRepo(db);
   const rateLimit = makeRateLimiter(RATE_LIMITS, rateLimits);
   const oauth = createOAuth({ db, config: oauthConfig, secureCookies, baseUrl: (req) => baseUrl(req), rateLimit, fetchImpl: oauthFetch });
   const seo = createSeo({ db, repo });
+  const indexNow = createIndexNow({ db, baseUrl: (publicUrl || 'https://www.sharedeals.in').replace(/\/$/, ''), enabled: indexNowEnabled });
   const ctx = { route, db, repo, seo, rateLimit, scraper, resolveUrl, secureCookies, oauthProviders: oauth.enabled, approvedStores };
   registerAuthRoutes(ctx);
   registerDealRoutes(ctx);
@@ -168,6 +172,7 @@ export function createApp({
       req, params, query: url.searchParams, body, user, token, ip: clientIp(req), setCookie: (c) => cookies.push(c),
     });
     send(res, 200, result, cookies.length ? { 'set-cookie': cookies } : {});
+    if (mutating) indexNow.afterApi(method, url.pathname, body, result);
   }
 
   return async function handle(req, res) {
@@ -196,6 +201,7 @@ export function createApp({
 
       if (pathname !== '/' && (await serveStatic(req, res, pathname))) return;
 
+      if (pathname === `/${INDEXNOW_KEY}.txt`) return send(res, 200, INDEXNOW_KEY, { 'content-type': 'text/plain; charset=utf-8' });
       if (pathname === '/robots.txt') return send(res, 200, seo.robots(baseUrl(req)), { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'public, max-age=3600' });
       if (pathname === '/sitemap.xml') return send(res, 200, await seo.sitemap(baseUrl(req)), { 'content-type': 'application/xml; charset=utf-8', 'cache-control': 'public, max-age=900' });
       if (path.extname(pathname)) return send(res, 404, 'Not found', { 'content-type': 'text/plain' });
