@@ -284,7 +284,8 @@ export function createRepo(db, { amazonTag = null } = {}) {
         db.get(
           `INSERT INTO offers (deal_id, submitted_by, store, store_key, source_url, canonical_url, canonical_url_hash, price_cents, full_price_cents, note, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
-          dealId, userId, f.store, link.storeKey, link.url.href, link.canonicalUrl, link.hash, f.price, f.fullPrice, f.note, now, now,
+          // Short links (amzn.in/…) are stored as the full link they lead to, so the store link can carry a tag.
+          dealId, userId, f.store, link.storeKey, new URL(link.resolved).href, link.canonicalUrl, link.hash, f.price, f.fullPrice, f.note, now, now,
         ),
       );
       await refreshDealPricing(dealId);

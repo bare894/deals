@@ -35,7 +35,9 @@ before(async () => {
     publicDir: path.join(root, 'public'),
     rateLimits: false,
     approvedStores: null, // the suite posts from stand-in shops; the store allowlist has its own test
-    resolveUrl: async (u) => u,
+    // amzn.in/d/… stands in for an Amazon short link that leads to a product page with the poster's tag.
+    resolveUrl: async (u) => (new URL(u).hostname === 'amzn.in' ? new URL('https://www.amazon.in/Glimbo-Toaster/dp/B0SHORT123?tag=poster-21') : u),
+    amazonTag: 'test-21',
     mailer: { configured: true, send: async (m) => void sentMail.push(m) },
     scraper: async () => ({ ok: true, reason: null, fields: { title: 'Scraped Title', imageUrl: 'https://cdn.x.com/i.jpg', price: 10, fullPrice: 20, store: 'Shop' } }),
   });
@@ -509,4 +511,16 @@ test('SEO: robots, sitemap, clean URLs, real status codes, structured data', asy
   assert.match(cat, /"@type":"BreadcrumbList"/);
   assert.equal((await get('/c/nope')).status, 404);
   assert.match(await (await get('/')).text(), /"@type":"WebSite"/);
+});
+
+test('Amazon short links are stored as the full link and shown with our tag', async () => {
+  const poster = client();
+  await poster.login('poster');
+  const r = await poster.post('/api/deals', dealBody('https://amzn.in/d/abc123', { title: 'Glimbo Toaster Short Link', confirmNew: true }));
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  const [offer] = (await client().get(`/api/deals/${r.data.deal.id}`)).data.deal.offers;
+  assert.equal(offer.url, 'https://www.amazon.in/Glimbo-Toaster/dp/B0SHORT123?tag=poster-21');
+  assert.equal(offer.buyUrl, 'https://www.amazon.in/dp/B0SHORT123?tag=test-21');
+  const other = (await client().get('/api/deals?limit=100')).data;
+  for (const d of other.items || other.deals || []) for (const o of d.offers || []) if (!/amazon\.in/.test(o.url)) assert.equal(o.buyUrl, o.url);
 });

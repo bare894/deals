@@ -115,7 +115,7 @@ npm run make-admin -- --email you@example.com --handle yourname [--password '…
 - **Same product from another store:** `findMatches` scores title, GTIN and MPN similarity.
   - If it's very likely the same product, the client shows **"This product is already on ShareDeals"** and offers **Add my ⟨store⟩ link to this deal** (`POST /api/deals/:id/offers`) or **post a new deal** (`confirmNew: true`).
   - The server enforces this too: creating a deal without `confirmNew` returns 409 with `matches`.
-- **One offer per store per deal.** Offers store the poster's exact URL.
+- **One offer per store per deal.** Offers store the poster's URL; short links (`amzn.in/…`, `fkrt.it/…`) are stored as the full link they lead to.
 - **Amazon affiliate tag:** with `AMAZON_ASSOCIATE_TAG` set (Railway variable), every Amazon.in link the site shows carries ShareDeals' tag, **replacing** any tag in the posted link: product pages become `https://www.amazon.in/dp/<ASIN>?tag=…`. The tag is added when links are shown (`buyUrl` on each offer, `src/affiliate.js`), not stored, so changing or unsetting the variable applies to every deal at once. Other stores' links are shown as posted. The footer carries the affiliate disclosure Amazon requires.
 - **Self-votes** aren't allowed. Clicking the same vote again clears it.
 

@@ -1,7 +1,8 @@
 // Affiliate links (Amazon Associates). With AMAZON_ASSOCIATE_TAG set (e.g. "sharedeals-21"), every
 // Amazon.in store link the site shows carries ShareDeals' tag, replacing any tag the poster's link
-// had. offers.source_url keeps the link exactly as posted; the tag is added only when links are
-// shown, so changing or removing the variable applies to every deal at once.
+// had. offers.source_url keeps the posted link (short links are stored as the full link they lead
+// to); the tag is added only when links are shown, so changing or removing the variable applies to
+// every deal at once.
 
 const AMAZON_HOST = /^(www\.|m\.)?amazon\.in$/i;
 // Other affiliate/attribution parameters that would compete with ours.
@@ -28,12 +29,14 @@ export function buyUrl(sourceUrl, canonicalUrl, { amazonTag } = {}) {
     const asin = canon.pathname.match(/^\/dp\/([A-Z0-9]{10})$/);
     if (asin) return `https://www.amazon.in/dp/${asin[1]}?tag=${encodeURIComponent(amazonTag)}`;
   }
-  // Other Amazon.in pages (deals, offers, search): keep the posted link and swap in our tag.
-  // Short links (amzn.in) can't carry a tag, so they stay as posted.
-  if (AMAZON_HOST.test(src.hostname)) {
-    for (const p of AMAZON_DROP) src.searchParams.delete(p);
-    src.searchParams.set('tag', amazonTag);
-    return src.href;
+  // Other Amazon.in pages (deals, offers, search): keep the posted link and swap in our tag. Offers
+  // saved before short links were stored in full still hold amzn.in/…; use where it led instead.
+  const page = AMAZON_HOST.test(src.hostname) ? src : AMAZON_HOST.test(canon.hostname) ? canon : null;
+  if (page) {
+    for (const p of AMAZON_DROP) page.searchParams.delete(p);
+    page.searchParams.set('tag', amazonTag);
+    if (page === canon) page.hostname = 'www.amazon.in';
+    return page.href;
   }
   return sourceUrl;
 }

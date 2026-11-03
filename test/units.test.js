@@ -253,6 +253,9 @@ test('Amazon links get our affiliate tag, replacing the poster\'s; other stores 
   // Non-product Amazon pages keep their path; the poster's tag is swapped for ours.
   const dealsPage = 'https://www.amazon.in/deals?tag=someone-21&ref_=nav';
   assert.equal(buyUrl(dealsPage, canonicalizeUrl(dealsPage), opts), 'https://www.amazon.in/deals?tag=sharedeals-21');
+  // Older offers saved as a short link: tagged via the page it led to.
+  assert.equal(buyUrl('https://amzn.in/d/abc123', 'https://amazon.in/dp/B0FXYZ1234', opts), 'https://www.amazon.in/dp/B0FXYZ1234?tag=sharedeals-21');
+  assert.equal(buyUrl('https://amzn.in/d/abc123', 'https://amazon.in/deals?deals-widget=x', opts), 'https://www.amazon.in/deals?deals-widget=x&tag=sharedeals-21');
   const fk = 'https://www.flipkart.com/pixel-10a/p/itm123?pid=MOB123&affid=someone';
   assert.equal(buyUrl(fk, canonicalizeUrl(fk), opts), fk);
   assert.equal(amazonTagFromEnv({ AMAZON_ASSOCIATE_TAG: ' sharedeals-21 ' }), 'sharedeals-21');
