@@ -371,7 +371,8 @@ test('deal pages render escaped Open Graph tags; SPA fallback works', async () =
   const r = await c.post('/api/deals', dealBody('https://og.com/x', { title: 'Big "Sale" <b>now</b>' }));
   const page = await fetch(`${base}/deals/${r.data.deal.id}`).then((res) => res.text());
   assert.match(page, /<meta property="og:title" content="Big &quot;Sale&quot; &lt;b&gt;now&lt;\/b&gt;">/);
-  assert.match(page, /og:description" content="₹19\.99 \(MRP ₹39\.99, 50% off\) on Shop/);
+  assert.match(page, /og:description" content="Big &quot;Sale&quot; &lt;b&gt;now&lt;\/b&gt; for ₹19\.99 \(MRP ₹39\.99, 50% off\) on Shop\./);
+  assert.match(page, /<title>Big &quot;Sale&quot; &lt;b&gt;now&lt;\/b&gt; at 50% off on Shop \| ShareDeals<\/title>/);
   assert.match(page, /product:price:currency" content="INR"/);
   const spa = await fetch(`${base}/admin/users`);
   assert.equal(spa.status, 200);

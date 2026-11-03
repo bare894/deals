@@ -1,3 +1,5 @@
+import { dealMetaDescription, dealMetaTitle } from '/meta.js';
+
 // ShareDeals web client — vanilla JS SPA (history routing, no build step).
 
 // ============================================================ utilities
@@ -803,15 +805,8 @@ async function detailPage({ params, alive }) {
   // Old /deals/<id> links land on the titled URL, like a full page load would.
   const path = dealPath(d);
   if (location.pathname !== path) history.replaceState(history.state, '', path + location.search + location.hash);
-  const priceLine = d.price === 0 ? 'FREE' : d.price != null ? money(d.price) : '';
-  setMeta({
-    path,
-    description: [
-      priceLine && `${priceLine}${d.fullPrice > d.price ? ` (MRP ${money(d.fullPrice)}${d.discountPct ? `, ${d.discountPct}% off` : ''})` : ''} on ${d.store}`,
-      d.offerCount > 1 ? `· compare ${d.offerCount} stores` : '',
-      `· ${d.score >= 0 ? '+' : ''}${d.score} votes`,
-    ].filter(Boolean).join(' '),
-  });
+  document.title = dealMetaTitle(d);
+  setMeta({ path, description: dealMetaDescription(d) });
   const form = $('#comment-form');
   form?.addEventListener('submit', async (e) => {
     e.preventDefault();

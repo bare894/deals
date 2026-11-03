@@ -3,6 +3,7 @@
 // crawlers that don't run JavaScript read it), robots.txt and sitemap.xml.
 import { escapeHtml, inr } from './http.js';
 import { slugify } from './db.js';
+import { dealMetaDescription, dealMetaTitle } from '../public/meta.js';
 
 const SITE = 'ShareDeals';
 const SITE_TITLE = 'ShareDeals.in | Community-vetted deals in India';
@@ -236,8 +237,8 @@ export function createSeo({ db, repo }) {
       .join('');
     return {
       status: 200,
-      title: `${d.title}${d.price != null ? ` at ${priceText(d)}` : ''} | ${SITE}`,
-      description: dealDescription(d),
+      title: dealMetaTitle(d),
+      description: dealMetaDescription(d),
       ogTitle: d.title,
       canonical: url,
       ogType: 'product',
