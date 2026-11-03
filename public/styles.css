@@ -211,6 +211,16 @@ th .th-sort:hover { color: var(--text, inherit); }
 .detail h1 { margin: 4px 0 10px; font-size: 26px; line-height: 1.25; letter-spacing: -0.015em; }
 .detail .price { font-size: 32px; }
 .detail .was { font-size: 18px; }
+.store-list { margin: 4px 0 18px; }
+.store-list h2 { font-size: 17px; margin: 0 0 8px; }
+.store-list ul { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border); border-radius: 12px; }
+.store-row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; }
+.store-row + .store-row { border-top: 1px solid var(--border); }
+.store-row .store-name { font-weight: 700; }
+.store-row .grow { flex: 1; min-width: 0; }
+.store-row .btn { flex: none; }
+.store-row .prices { gap: 8px; align-items: baseline; }
+.store-row .price { font-size: 18px; }
 .off-badge { background: var(--price); color: #fff; padding: 2px 10px; border-radius: 999px; font-weight: 800; font-size: 14px; }
 .meta-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: var(--muted); font-size: 14px; }
 .badge { display: inline-block; padding: 2px 10px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); font-size: 12px; font-weight: 700; text-decoration: none; color: var(--text); }

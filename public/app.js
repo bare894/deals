@@ -210,7 +210,7 @@ function reportModal(type, id) {
   const reasons = type === 'comment' ? REPORT_REASONS.filter(([k]) => ['spam', 'offensive', 'other'].includes(k)) : REPORT_REASONS;
   return openModal(
     html`<form>
-      <h2>Report ${type === 'deal' ? 'this deal' : 'this comment'}</h2>
+      <h2>Report ${type === 'deal' ? 'this deal' : type === 'offer' ? 'this store link' : 'this comment'}</h2>
       <div class="form-error" hidden></div>
       <div class="radio-list">
         ${reasons.map(([k, label], i) => html`<label><input type="radio" name="reason" value="${k}" ${i === 0 ? 'checked' : ''}> ${label}</label>`)}
@@ -222,13 +222,38 @@ function reportModal(type, id) {
       </div>
     </form>`,
     async (fd) => {
-      await api(`/api/${type === 'deal' ? 'deals' : 'comments'}/${id}/report`, { method: 'POST', body: { reason: fd.get('reason'), note: fd.get('note') } });
+      await api(`/api/${type === 'deal' ? 'deals' : type === 'offer' ? 'offers' : 'comments'}/${id}/report`, { method: 'POST', body: { reason: fd.get('reason'), note: fd.get('note') } });
       toast('Thanks — a moderator will take a look.');
     },
   );
 }
 
 // ============================================================ shared components
+
+/** "Where to buy": every live store link on a deal, cheapest first (the API sends them in that order). */
+function storeList(d, removed) {
+  const live = (d.offers || []).filter((o) => o.status === 'active');
+  if (live.length < 2) return '';
+  return html`<section class="store-list" aria-labelledby="where-to-buy">
+    <h2 id="where-to-buy">Where to buy <span class="muted">(${live.length} stores)</span></h2>
+    <ul>${live.map(
+      (o, i) => html`<li class="store-row">
+        <div class="grow">
+          <div class="store-name">${o.store}${i === 0 ? html` <span class="badge match-high">Lowest price</span>` : ''}</div>
+          <div class="prices">
+            <span class="price">${money(o.price)}</span>
+            ${o.fullPrice > o.price ? html`<span class="was">${money(o.fullPrice)}</span>` : ''}
+            ${o.discountPct ? html`<span class="small muted">${o.discountPct}% off</span>` : ''}
+          </div>
+          ${o.note ? html`<div class="small">${o.note}</div>` : ''}
+          <div class="small muted">Added by @${o.poster.handle}
+            ${state.user && !removed && state.user.id !== o.poster.id ? html` · <button class="linkish" data-action="report" data-type="offer" data-id="${o.id}">Report price</button>` : ''}</div>
+        </div>
+        <a class="btn ${i === 0 ? 'btn-primary' : ''}" href="${o.buyUrl}" target="_blank" rel="noopener noreferrer nofollow sponsored ugc" data-track="get_deal" data-deal-id="${d.id}" data-store="${o.store}">Get deal ↗</a>
+      </li>`,
+    )}</ul>
+  </section>`;
+}
 
 function priceBlock(d, { mrpLabel = false } = {}) {
   return html`<div class="prices">
@@ -872,6 +897,7 @@ async function detailPage({ params, alive }) {
             ${d.canEdit ? html`<a class="btn" href="/deals/${d.id}/edit">✎ Edit</a>` : ''}
             ${isMod() ? html`<a class="btn" href="/admin/deals?q=${encodeURIComponent(d.title.slice(0, 40))}">Moderate</a>` : ''}
           </div>
+          ${storeList(d, removed)}
           <p class="meta-line">Posted by <strong>@${d.poster.handle}</strong> · <span title="${fullDate(d.createdAt)}">${timeAgo(d.createdAt)}</span>
             · ${d.upvotes} up / ${d.downvotes} down</p>
           <h2 style="font-size:17px;margin:20px 0 8px">Deal details</h2>
@@ -1085,7 +1111,7 @@ async function submitPage({ query, alive }) {
       <h2 class="match-title">${high ? 'This product is already on ShareDeals' : 'Is this one of these products?'}</h2>
       <p class="muted" style="margin-top:0">
         ${fromSubmit ? 'Before posting a new deal: ' : ''}Add your ${store} link to the existing deal instead of posting it again.
-        Shoppers see every store's price side by side on one deal, and your link stays yours.
+        Shoppers see every store's price side by side on one deal.
       </p>
       <div class="matches">
         ${s.matches.map((m) => {
@@ -1107,7 +1133,7 @@ async function submitPage({ query, alive }) {
           </div>`;
         })}
       </div>
-      <div class="match-footer"><button class="btn" id="not-same">No, it's a different product — post a new deal</button></div>`);
+      <div class="match-footer"><button class="btn" id="not-same">No, it's a different product. Post a new deal</button></div>`);
     bindChangeUrl();
     $('#not-same').addEventListener('click', () => showNewDealForm({ confirmNew: true }));
     for (const b of $$('[data-attach]')) {
@@ -1146,7 +1172,7 @@ async function submitPage({ query, alive }) {
       try {
         await api(`/api/deals/${deal.id}/offers`, { method: 'POST', body });
         track('add_store_link', { deal_id: deal.id, store: body.store });
-        toast(`Added your ${body.store} link — thanks!`);
+        toast(`Added your ${body.store} link. Thanks!`);
         navigate(dealPath(deal), { replace: true });
       } catch (err) {
         errBox.innerHTML = String(err.data?.duplicate ? duplicateNotice(err.data.duplicate) : html`<div class="form-error">${err.message}</div>`);
