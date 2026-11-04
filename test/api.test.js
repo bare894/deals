@@ -190,6 +190,14 @@ test('end-to-end: auth, submit, dedup, vote, comment, bookmark, moderation', asy
     const r = await poster.patch(`/api/deals/${dealId}`, dealBody('https://shop.com/p/1', { title: 'Edited title' }));
     assert.equal(r.status, 200);
     assert.equal(r.data.deal.title, 'Edited title');
+    // Editing the price, MRP and store updates the poster's store listing and the deal's best price.
+    const priced = await poster.patch(`/api/deals/${dealId}`, dealBody('https://shop.com/p/1', { title: 'Edited title', price: '14.50', fullPrice: '29.00' }));
+    assert.equal(priced.status, 200);
+    assert.equal(priced.data.deal.price, 14.5);
+    assert.equal(priced.data.deal.fullPrice, 29);
+    assert.equal(priced.data.deal.discountPct, 50);
+    assert.equal((await anon.get(`/api/deals/${dealId}`)).data.deal.price, 14.5);
+    assert.equal((await poster.patch(`/api/deals/${dealId}`, dealBody('https://shop.com/p/1', { price: '40', fullPrice: '30' }))).status, 400, 'MRP below price is refused');
   });
 
   await t.test('bookmarks + for-you personalization', async () => {

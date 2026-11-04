@@ -1218,8 +1218,12 @@ async function editPage({ params, alive }) {
   const { deal: d } = await api(`/api/deals/${params[0]}`);
   if (!alive()) return;
   if (!d.canEdit) throw Object.assign(new Error('You can only edit your own active deals.'), { status: 403 });
-  const link = (d.offers || []).find((o) => o.status === 'active')?.url || '';
-  const v = { id: d.id, url: link, title: d.title, imageUrl: d.imageUrl, price: d.price, fullPrice: d.fullPrice, store: d.store, categoryId: d.category?.id, details: d.details };
+  // Price, MRP and store are those of the editor's own store listing (other stores' prices
+  // belong to whoever added them), falling back to the best listing.
+  const active = (d.offers || []).filter((o) => o.status === 'active');
+  const mine = active.find((o) => o.poster?.id === state.user.id) || active[0];
+  const link = mine?.url || '';
+  const v = { id: d.id, url: link, title: d.title, imageUrl: d.imageUrl, price: mine?.price ?? d.price, fullPrice: mine?.fullPrice ?? d.fullPrice, store: mine?.store ?? d.store, categoryId: d.category?.id, details: d.details };
   setPage('Edit deal', html`<div class="page-head"><h1>Edit deal</h1></div><div class="panel">${dealForm(v, { mode: 'edit' })}</div>`);
   bindDealForm($('#deal-form'), {
     url: link,

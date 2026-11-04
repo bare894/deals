@@ -163,10 +163,24 @@ export function registerDealRoutes({ route, db, repo, seo, push, rateLimit, scra
     if (!row || row.status !== 'active') throw new HttpError(404, 'Deal not found');
     if (row.submitted_by !== user.id) throw new HttpError(403, 'Only the person who posted this deal can edit its details');
     const d = await validateDealBody(db, body);
-    await db.run(
-      'UPDATE deals SET title = ?, image_url = ?, category_id = ?, details = ?, gtin = COALESCE(?, gtin), mpn = COALESCE(?, mpn), updated_at = ? WHERE id = ?',
-      d.title, d.imageUrl, d.categoryId, d.details, d.gtin, d.mpn, Date.now(), row.id,
-    );
+    // The form also carries the price, MRP and store of the poster's own store listing.
+    const own = body.price !== undefined
+      ? await db.get("SELECT * FROM offers WHERE deal_id = ? AND submitted_by = ? AND status = 'active' ORDER BY created_at LIMIT 1", row.id, user.id)
+      : null;
+    const offer = own ? validateOfferBody({ ...body, store: body.store ?? own.store, note: body.note ?? own.note }) : null;
+    await tx(db, async () => {
+      await db.run(
+        'UPDATE deals SET title = ?, image_url = ?, category_id = ?, details = ?, gtin = COALESCE(?, gtin), mpn = COALESCE(?, mpn), updated_at = ? WHERE id = ?',
+        d.title, d.imageUrl, d.categoryId, d.details, d.gtin, d.mpn, Date.now(), row.id,
+      );
+      if (offer) {
+        await db.run(
+          'UPDATE offers SET price_cents = ?, full_price_cents = ?, store = ?, note = ?, updated_at = ? WHERE id = ?',
+          offer.price, offer.fullPrice, offer.store, offer.note, Date.now(), own.id,
+        );
+        await repo.refreshDealPricing(row.id);
+      }
+    });
     return { deal: await repo.getDeal(row.id) };
   });
 
