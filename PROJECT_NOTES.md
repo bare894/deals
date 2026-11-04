@@ -112,6 +112,7 @@ npm run make-admin -- --email you@example.com --handle yourname [--password '…
   - Short links (`amzn.in`, `fkrt.it`, `bit.ly` …) are followed and judged by where they lead.
   - Other sites are refused **before** anything is fetched from them.
   - Existing deals are not affected.
+- **Prohibited products:** adult/sexual, weapon and offensive products are refused outright (400, no moderation) when a deal or store link is posted or edited, matched on title, details, note and link (`src/blocklist.js`). Whole-word match, plurals included; "allow" phrases exempt harmless uses ("massage gun"). Default list seeded by migration 9; admins edit it in Admin Mode → Blocked words. Applies to everyone, admins included. Existing deals aren't touched.
 - **Exact-link dedup:** URLs are canonicalized (tracking parameters removed; Amazon ASIN, Flipkart `itm`+`pid`, Myntra style ID and so on), and the canonical form is hashed. A partial unique index means only one *active* offer per link. Removed deals free their links.
 - **Same product from another store:** `findMatches` scores title, GTIN and MPN similarity.
   - If it's very likely the same product, the client shows **"This product is already on ShareDeals"** and offers **Add my ⟨store⟩ link to this deal** (`POST /api/deals/:id/offers`) or **post a new deal** (`confirmNew: true`).

@@ -6,6 +6,7 @@ import { matchesPhrase, phraseWords } from '../src/alerts.js';
 import { hotScore, rankHot, rankForYou, categoryAffinity, interestProfile } from '../src/ranking.js';
 import { clientIp } from '../src/http.js';
 import { buyUrl, amazonTagFromEnv } from '../src/affiliate.js';
+import { findBlocked } from '../src/blocklist.js';
 
 test('canonicalization strips tracking noise but keeps product identity', () => {
   const base = 'https://bestbuy.com/site/sony-wh1000xm5/6505727.p?skuId=6505727';
@@ -261,4 +262,16 @@ test('Amazon links get our affiliate tag, replacing the poster\'s; other stores 
   assert.equal(amazonTagFromEnv({ AMAZON_ASSOCIATE_TAG: ' sharedeals-21 ' }), 'sharedeals-21');
   assert.equal(amazonTagFromEnv({ AMAZON_ASSOCIATE_TAG: 'bad tag"><' }), null);
   assert.equal(amazonTagFromEnv({}), null);
+});
+
+test('blocked words match whole words and plurals; allowed phrases are exempt', () => {
+  const list = { block: ['gun', 'vibrator', 'sex toy', 'bomb'], allow: ['massage gun', 'gun metal', 'bath bomb'] };
+  assert.equal(findBlocked(['Toy Gun with Foam Bullets'], list), 'gun');
+  assert.equal(findBlocked(['Rechargeable VIBRATORS for women'], list), 'vibrator');
+  assert.equal(findBlocked(['https://www.amazon.in/Adult-Sex-Toy-Kit/dp/B0XXXXXXXX'], list), 'sex toy');
+  assert.equal(findBlocked(['Lifelong Massage Gun for pain relief'], list), null);
+  assert.equal(findBlocked(['Titan watch, gun-metal finish'], list), null);
+  assert.equal(findBlocked(['Bath Bombs gift set'], list), null);
+  assert.equal(findBlocked(['Gundam model kit', 'Begun cotton kurta', 'Bomber jacket'], list), null);
+  assert.equal(findBlocked(['Massage gun and a toy gun'], list), 'gun', 'an allowed phrase only exempts itself');
 });

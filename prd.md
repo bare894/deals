@@ -247,6 +247,10 @@ Available to any signed-in user on the website, the Android app, and via the ext
 - Checked server-side for auto-fill, new deals and added store links, so it covers the website, the extension and the API alike.
 - Matching uses the registrable domain (`dl.flipkart.com` is fine; look-alike domains are refused). Short links (`amzn.in`, `fkrt.it`, `bit.ly`…) are judged by where they lead.
 
+### 9.4a Prohibited products *(new)*
+
+**Built.** Adult/sexual products, weapons (guns, ammunition, knives made for fighting, explosives) and offensive items can't be posted at all; there's no moderation step. Deals and store links are checked on title, details, note and link when posted or edited. Admins maintain the blocked words, and "allowed" exceptions such as "massage gun", in Admin Mode → Blocked words.
+
 ### 9.5 One deal per product, many store offers *(new)*
 
 **Built.** A deal represents a **product** (e.g. "Google Pixel 10a 256 GB"). Each store's link is an **offer** on that deal with its own price and MRP.

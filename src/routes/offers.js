@@ -1,16 +1,17 @@
 // Store listings ("offers") on a deal: anyone can add their store's link to an existing product
-// deal; each listing is owned by its poster (whose link — and affiliate tag — is preserved).
+// deal; each listing is owned by its poster (whose link is kept as posted).
 import { tx } from '../db.js';
 import { HttpError } from '../http.js';
 import { duplicateLinkError } from '../repo.js';
 import { resolveLink, validateOfferBody } from './common.js';
 
-export function registerOfferRoutes({ route, db, repo, rateLimit, resolveUrl, approvedStores }) {
+export function registerOfferRoutes({ route, db, repo, rateLimit, resolveUrl, approvedStores, blocklist }) {
   route('POST', '/api/deals/:id/offers', { auth: true, active: true }, async ({ params, body, user }) => {
     rateLimit('submit', user.id);
     const dealId = Number(params.id);
     const link = await resolveLink(body.url, resolveUrl, approvedStores);
     const offer = validateOfferBody(body);
+    await blocklist.assertAllowed(link.url.href, link.resolved.href, offer.store, offer.note);
     const dup = await repo.findActiveOfferByHash(link.hash);
     if (dup) throw duplicateLinkError(dup);
     const gtin = /^\d{8,14}$/.test(String(body.gtin || '')) ? String(body.gtin).padStart(14, '0') : null;
@@ -30,6 +31,7 @@ export function registerOfferRoutes({ route, db, repo, rateLimit, resolveUrl, ap
   route('PATCH', '/api/offers/:id', { auth: true, active: true }, async ({ params, body, user }) => {
     const o = await ownOffer(Number(params.id), user);
     const f = validateOfferBody(body);
+    await blocklist.assertAllowed(f.store, f.note);
     await tx(db, async () => {
       await db.get('SELECT 1 FROM deals WHERE id = ? FOR UPDATE', o.deal_id);
       await db.run(

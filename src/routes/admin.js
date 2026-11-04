@@ -6,7 +6,7 @@ const MOD = { auth: true, role: 'moderator' };
 const ADMIN = { auth: true, role: 'admin' };
 const DAY = 24 * 3_600_000;
 
-export function registerAdminRoutes({ route, db, repo }) {
+export function registerAdminRoutes({ route, db, repo, blocklist }) {
   route('GET', '/api/admin/summary', MOD, async () => {
     const r = await db.get(
       `SELECT (SELECT COUNT(DISTINCT (target_type, target_id)) FROM reports WHERE status = 'open') AS open_reports,
@@ -281,6 +281,41 @@ export function registerAdminRoutes({ route, db, repo }) {
     return { ok: true };
   });
 
+  // ------------------------------------------------------------ blocked words (Admin only)
+
+  route('GET', '/api/admin/blocked-terms', ADMIN, async () => ({
+    items: (await db.all('SELECT b.*, u.handle FROM blocked_terms b LEFT JOIN users u ON u.id = b.created_by ORDER BY b.kind, lower(b.term)')).map((b) => ({
+      id: b.id, term: b.term, kind: b.kind, by: b.handle || null, createdAt: b.created_at || null,
+    })),
+  }));
+
+  route('POST', '/api/admin/blocked-terms', ADMIN, async ({ body, user }) => {
+    const term = str(body.term, 'Word or phrase', { required: true, min: 2, max: 60 }).toLowerCase().replace(/\s+/g, ' ');
+    if (!/[a-z0-9]/.test(term)) throw new HttpError(400, 'Use letters or numbers');
+    const kind = body.kind === 'allow' ? 'allow' : 'block';
+    try {
+      const { id } = await db.get('INSERT INTO blocked_terms (term, kind, created_by, created_at) VALUES (?, ?, ?, ?) RETURNING id', term, kind, user.id, Date.now());
+      await repo.logAction(user.id, 'blocked_term', id, kind === 'allow' ? 'allow phrase' : 'block word', term);
+      return { id };
+    } catch (err) {
+      if (isUniqueViolation(err)) throw new HttpError(409, 'That word or phrase is already on the list');
+      throw err;
+    }
+  });
+
+  route('DELETE', '/api/admin/blocked-terms/:id', ADMIN, async ({ params, user }) => {
+    const row = await db.get('SELECT * FROM blocked_terms WHERE id = ?', Number(params.id));
+    if (!row) throw new HttpError(404, 'Not on the list');
+    await db.run('DELETE FROM blocked_terms WHERE id = ?', row.id);
+    await repo.logAction(user.id, 'blocked_term', row.id, row.kind === 'allow' ? 'remove allow phrase' : 'unblock word', row.term);
+    return { ok: true };
+  });
+
+  // Try a product title against the current list.
+  route('POST', '/api/admin/blocked-terms/test', ADMIN, async ({ body }) => ({
+    blockedBy: await blocklist.find(str(body.text, 'Text', { required: true, max: 2000 })),
+  }));
+
   // ------------------------------------------------------------ feedback
 
   route('GET', '/api/admin/feedback', MOD, async ({ query }) => {
@@ -323,6 +358,7 @@ export function registerAdminRoutes({ route, db, repo }) {
       }
       if (r.target_type === 'user') return (await db.get('SELECT handle FROM users WHERE id = ?', r.target_id))?.handle;
       if (r.target_type === 'comment') return (await db.get('SELECT body FROM comments WHERE id = ?', r.target_id))?.body?.slice(0, 80);
+      if (r.target_type === 'blocked_term') return r.reason;
       return (await db.get('SELECT name FROM categories WHERE id = ?', r.target_id))?.name;
     };
     const items = [];

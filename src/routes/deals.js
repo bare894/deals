@@ -5,7 +5,7 @@ import { duplicateLinkError, storeConflictError } from '../repo.js';
 import { extractDealFields } from '../scrape.js';
 import { REPORT_REASONS, isMod, resolveLink, validateDealBody, validateOfferBody } from './common.js';
 
-export function registerDealRoutes({ route, db, repo, seo, push, rateLimit, scraper, resolveUrl, approvedStores }) {
+export function registerDealRoutes({ route, db, repo, seo, push, rateLimit, scraper, resolveUrl, approvedStores, blocklist }) {
   // ------------------------------------------------------------ discovery (§6, §7)
 
   route('GET', '/api/home', async ({ user }) => {
@@ -155,6 +155,8 @@ export function registerDealRoutes({ route, db, repo, seo, push, rateLimit, scra
       else for (const [k, v] of Object.entries(fetched.fields || {})) if ((result.fields[k] ?? '') === '' && v != null && v !== '') result.fields[k] = v;
     }
     const fields = { ...result.fields };
+    // Prohibited products are refused here, before the user fills in the form.
+    await blocklist.assertAllowed(link.url.href, link.resolved.href, fields.title);
     // The scraper names one of the site's categories; the form needs its id (admins can hide/rename them).
     if (fields.category) {
       fields.categoryId = (await db.get('SELECT id FROM categories WHERE lower(name) = lower(?) AND active = 1', fields.category))?.id ?? null;
@@ -168,6 +170,7 @@ export function registerDealRoutes({ route, db, repo, seo, push, rateLimit, scra
     const link = await resolveLink(body.url, resolveUrl, approvedStores);
     const deal = await validateDealBody(db, body);
     const offer = validateOfferBody(body);
+    await blocklist.assertAllowed(link.url.href, link.resolved.href, deal.title, deal.details, offer.note);
     const dup = await repo.findActiveOfferByHash(link.hash);
     if (dup) throw duplicateLinkError(dup);
     // Same product already posted from another store? Steer the user to add their link to it.
@@ -195,6 +198,7 @@ export function registerDealRoutes({ route, db, repo, seo, push, rateLimit, scra
       ? await db.get("SELECT * FROM offers WHERE deal_id = ? AND submitted_by = ? AND status = 'active' ORDER BY created_at LIMIT 1", row.id, user.id)
       : null;
     const offer = own ? validateOfferBody({ ...body, store: body.store ?? own.store, note: body.note ?? own.note }) : null;
+    await blocklist.assertAllowed(d.title, d.details, offer?.store, offer?.note);
     await tx(db, async () => {
       await db.run(
         'UPDATE deals SET title = ?, image_url = ?, category_id = ?, details = ?, gtin = COALESCE(?, gtin), mpn = COALESCE(?, mpn), updated_at = ? WHERE id = ?',

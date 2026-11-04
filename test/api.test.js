@@ -592,3 +592,40 @@ test('pages on other addresses 301 to PUBLIC_URL; the API stays reachable', asyn
     srv.close();
   }
 });
+
+test('prohibited products are refused, and admins manage the blocked words', async () => {
+  const poster = client();
+  await poster.login('poster');
+  const admin = client();
+  await admin.login('admin@t.test');
+  // Default list (migration 9): adult and weapon products are refused outright, even for admins.
+  for (const [who, extra] of [[poster, { title: 'Realistic Vibrator for Adults' }], [poster, { title: 'Air Pistol 4.5mm' }], [admin, { title: 'Sex Toys Combo' }], [poster, { details: 'Comes with a free taser' }]]) {
+    const r = await who.post('/api/deals', dealBody(`https://shop.com/blocked-${Math.random()}`, { confirmNew: true, ...extra }));
+    assert.equal(r.status, 400, JSON.stringify(extra));
+    assert.equal(r.data.blocked, true);
+  }
+  // The link alone is enough.
+  assert.equal((await poster.post('/api/deals', dealBody('https://shop.com/products/butt-plug-set', { title: 'Mystery item', confirmNew: true }))).status, 400);
+  // Allowed exceptions still post.
+  assert.equal((await poster.post('/api/deals', dealBody('https://shop.com/massage-gun', { title: 'Lifelong Massage Gun', confirmNew: true }))).status, 200);
+
+  // Admin adds a word: from then on it's refused; removing it allows it again.
+  assert.equal((await poster.post('/api/admin/blocked-terms', { term: 'hookah' })).status, 403, 'admins only');
+  const add = await admin.post('/api/admin/blocked-terms', { term: '  Hookah ' });
+  assert.equal(add.status, 200);
+  assert.equal((await admin.post('/api/admin/blocked-terms', { term: 'hookah' })).status, 409);
+  assert.equal((await admin.post('/api/admin/blocked-terms/test', { text: 'Premium glass hookahs' })).data.blockedBy, 'hookah');
+  const hookah = dealBody('https://shop.com/hookah-1', { title: 'Premium Glass Hookah', confirmNew: true });
+  assert.equal((await poster.post('/api/deals', hookah)).status, 400);
+  const list = (await admin.get('/api/admin/blocked-terms')).data.items;
+  assert.ok(list.some((t) => t.term === 'gun' && t.kind === 'block') && list.some((t) => t.term === 'massage gun' && t.kind === 'allow'));
+  assert.equal((await admin.del(`/api/admin/blocked-terms/${add.data.id}`)).status, 200);
+  assert.equal((await poster.post('/api/deals', hookah)).status, 200);
+  const audit = (await admin.get('/api/admin/audit')).data.items;
+  assert.ok(audit.some((a) => a.targetType === 'blocked_term' && a.targetLabel === 'hookah'));
+
+  // Store links and edits are checked too.
+  const ok = (await poster.post('/api/deals', dealBody('https://shop.com/kettle-blk', { title: 'Plain Steel Kettle', confirmNew: true }))).data.deal;
+  assert.equal((await poster.post(`/api/deals/${ok.id}/offers`, { url: 'https://other.com/kettle', price: '10', store: 'Other', note: 'free condom with order' })).status, 400);
+  assert.equal((await poster.patch(`/api/deals/${ok.id}`, { ...dealBody('https://shop.com/kettle-blk'), title: 'Kettle and Shotgun' })).status, 400);
+});

@@ -1858,6 +1858,7 @@ const ADMIN_TABS = [
   ['comments', 'Comments', false],
   ['users', 'Users & roles', true],
   ['categories', 'Categories', true],
+  ['blocked', 'Blocked words', true],
   ['feedback', 'Feedback', false],
   ['audit', 'Audit log', false],
 ];
@@ -1886,7 +1887,7 @@ async function adminPage({ params, query, alive }) {
       </div>`,
     );
   const reload = () => renderRoute();
-  const handlers = { reports: adminReports, deals: adminDeals, comments: adminComments, users: adminUsers, categories: adminCategories, feedback: adminFeedback, audit: adminAudit };
+  const handlers = { reports: adminReports, deals: adminDeals, comments: adminComments, users: adminUsers, categories: adminCategories, blocked: adminBlocked, feedback: adminFeedback, audit: adminAudit };
   await handlers[tab]({ shell, query, alive, reload, summary });
 }
 
@@ -2139,6 +2140,64 @@ async function adminCategories({ shell, alive, reload }) {
   }
   bindAdminActions($('#admin-body'), {
     toggle: ({ id, active }) => modAction(() => api(`/api/admin/categories/${id}`, { method: 'PATCH', body: { active: active === '1' } }), 'Category updated', refreshMeta),
+  });
+}
+
+async function adminBlocked({ shell, alive, reload }) {
+  const { items } = await api('/api/admin/blocked-terms');
+  if (!alive()) return;
+  const table = (kind, empty) => {
+    const rows = items.filter((t) => t.kind === kind);
+    return rows.length
+      ? html`<div class="table-wrap"><table>
+          <thead><tr><th>${kind === 'block' ? 'Blocked word or phrase' : 'Allowed phrase'}</th><th>Added by</th><th></th></tr></thead>
+          <tbody>${rows.map(
+            (t) => html`<tr>
+              <td><strong>${t.term}</strong></td>
+              <td class="muted small">${t.by ? `@${t.by}` : 'Default list'}</td>
+              <td class="actions-cell"><button class="btn btn-sm" data-adm="remove" data-id="${t.id}" data-term="${t.term}">Remove</button></td>
+            </tr>`,
+          )}</tbody>
+        </table></div>`
+      : html`<p class="muted">${empty}</p>`;
+  };
+  shell(html`<p class="muted" style="margin-top:0">Deals and store links whose title, details, note or link contain a blocked word can't be posted or edited in. There's no review: the poster sees a message that the product isn't allowed. Words match whole words, plurals included ("pistol" also blocks "pistols"). Deals already on the site aren't changed.</p>
+    <form class="toolbar" id="term-add">
+      <input class="input" name="term" placeholder="Word or phrase, e.g. pepper spray" minlength="2" maxlength="60" required>
+      <select class="input" name="kind" aria-label="Type">
+        <option value="block">Block</option>
+        <option value="allow">Allow (exception)</option>
+      </select>
+      <button class="btn btn-primary">Add</button>
+    </form>
+    <form class="toolbar" id="term-test">
+      <input class="input" name="text" placeholder="Test a product title, e.g. Lifelong massage gun" maxlength="2000" required>
+      <button class="btn">Test</button>
+      <span id="term-test-result" class="small" role="status"></span>
+    </form>
+    <h2 style="font-size:17px;margin:20px 0 8px">Blocked (${items.filter((t) => t.kind === 'block').length})</h2>
+    ${table('block', 'Nothing is blocked.')}
+    <h2 style="font-size:17px;margin:20px 0 8px">Allowed exceptions (${items.filter((t) => t.kind === 'allow').length})</h2>
+    <p class="muted small" style="margin-top:0">Phrases that are fine even though they contain a blocked word, e.g. "massage gun" or "glue gun" while "gun" is blocked.</p>
+    ${table('allow', 'No exceptions.')}`);
+  $('#term-add').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const f = e.target.elements;
+    modAction(() => api('/api/admin/blocked-terms', { method: 'POST', body: { term: f.namedItem('term').value, kind: f.namedItem('kind').value } }), f.namedItem('kind').value === 'allow' ? 'Exception added' : 'Word blocked', reload);
+  });
+  $('#term-test').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const out = $('#term-test-result');
+    try {
+      const { blockedBy } = await api('/api/admin/blocked-terms/test', { method: 'POST', body: { text: e.target.elements.namedItem('text').value } });
+      out.textContent = blockedBy ? `Blocked (matches "${blockedBy}")` : 'Allowed';
+      out.style.color = blockedBy ? 'var(--danger)' : 'var(--price)';
+    } catch (err) {
+      out.textContent = err.message;
+    }
+  });
+  bindAdminActions($('#admin-body'), {
+    remove: ({ id }) => modAction(() => api(`/api/admin/blocked-terms/${id}`, { method: 'DELETE' }), 'Removed from the list', reload),
   });
 }
 

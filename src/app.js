@@ -21,6 +21,7 @@ import { registerFeedbackRoutes } from './routes/feedback.js';
 import { registerHealthRoutes } from './routes/health.js';
 import { createOAuth, oauthConfigFromEnv } from './oauth.js';
 import { amazonTagFromEnv } from './affiliate.js';
+import { createBlocklist } from './blocklist.js';
 
 export { HttpError };
 
@@ -96,7 +97,8 @@ export function createApp({
   const seo = createSeo({ db, repo });
   const push = createPush({ db, repo, env: pushEnv, ...(pushFetch ? { fetchImpl: pushFetch } : {}) });
   const indexNow = createIndexNow({ db, baseUrl: (publicUrl || 'https://www.sharedeals.in').replace(/\/$/, ''), enabled: indexNowEnabled });
-  const ctx = { route, db, repo, seo, push, mailer, publicBase: () => (publicUrl || 'https://www.sharedeals.in').replace(/\/$/, ''), rateLimit, scraper, resolveUrl, secureCookies, oauthProviders: oauth.enabled, approvedStores };
+  const blocklist = createBlocklist(db);
+  const ctx = { route, db, repo, seo, push, mailer, blocklist, publicBase: () => (publicUrl || 'https://www.sharedeals.in').replace(/\/$/, ''), rateLimit, scraper, resolveUrl, secureCookies, oauthProviders: oauth.enabled, approvedStores };
   registerAuthRoutes(ctx);
   registerDealRoutes(ctx);
   registerOfferRoutes(ctx);
