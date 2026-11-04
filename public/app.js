@@ -1741,32 +1741,38 @@ const legalPage = (title, updated, body) =>
 async function privacyPage() {
   legalPage(
     'Privacy Policy',
-    '2 November 2026',
+    '4 November 2026',
     html`
     <p>ShareDeals.in ("ShareDeals", "we") is a community site and Android app where people in India share and discuss deals from online stores. This policy explains what we collect and why, in line with India's Digital Personal Data Protection Act, 2023.</p>
     <h2>What we collect</h2>
     <ul>
       <li><strong>Account details:</strong> email address, username, and a securely hashed password. If you sign in with Google or Facebook, we receive your name, email address and an account identifier from them.</li>
-      <li><strong>What you post and do:</strong> deals and store links, prices, comments, votes, saved deals, reports, and deals you view (used to personalise "For You").</li>
-      <li><strong>Usage and device data:</strong> we use Google Analytics, which sets cookies and collects pages visited, interactions, device and browser type, and approximate location. Our servers also see your IP address, used for security and to limit abuse.</li>
+      <li><strong>What you post and do:</strong> deals and store links, prices, comments, votes, saved deals, reports, feedback you send, and the people you block.</li>
+      <li><strong>Pages you view:</strong> when you're signed in, we record which deal, category and store pages you open, and when. We use this to personalise "For You" and to decide which new deals to tell you about.</li>
+      <li><strong>Alerts:</strong> the search phrases you save as alerts (up to 10), and which new deals have matched them.</li>
+      <li><strong>Notifications (Android app):</strong> if you allow notifications, a notification token for your device from Google Firebase Cloud Messaging, linked to your account, and a record of the notifications we've sent you.</li>
+      <li><strong>Usage and device data:</strong> we use Google Analytics, which sets cookies and collects pages visited, searches, interactions (including notifications opened), device and browser type, and approximate location. Our servers also see your IP address, used for security and to limit abuse.</li>
     </ul>
     <h2>How we use it</h2>
     <ul>
       <li>To run your account and show your posts, comments and votes.</li>
-      <li>To rank and personalise deals.</li>
+      <li>To rank and personalise deals, based on what you vote on, save and view.</li>
+      <li>To send the notifications you've chosen in the Android app: new deals that match your alerts or your interests (at most 6 a day for interest-based ones). You can turn notifications off at any time in your phone's settings, or by deleting your alerts.</li>
+      <li>To send account emails, such as password reset links.</li>
+      <li>To hide content from people you've blocked.</li>
       <li>To keep the community safe: moderation, fraud and abuse prevention.</li>
       <li>To understand how the service is used so we can improve it.</li>
     </ul>
     <p>We do not sell your personal data.</p>
     <h2>Who we share it with</h2>
     <ul>
-      <li><strong>Service providers:</strong> our hosting provider (Railway) and Google Analytics.</li>
+      <li><strong>Service providers</strong> who process data on our behalf: Railway (hosting and database), Google Analytics (usage statistics), Google Firebase Cloud Messaging (delivering notifications), and Zoho ZeptoMail (sending account emails).</li>
       <li><strong>Sign-in providers:</strong> Google or Facebook, if you choose to sign in with them.</li>
       <li><strong>Everyone:</strong> your username and everything you post are public.</li>
-      <li><strong>Stores:</strong> when you open a deal, you go to that store's website or app, and its own privacy policy applies.</li>
+      <li><strong>Stores:</strong> when you open a deal, you go to that store's website or app, and its own privacy policy applies. Some store links, such as Amazon's, carry our affiliate tag so the store knows the visit came from ShareDeals; we don't send them your account details.</li>
     </ul>
     <h2>How long we keep it</h2>
-    <p>We keep account data while your account exists. When you delete your account, we delete your email, sign-in links, comments, votes, saved deals and reports. Deals and store links you posted stay up, credited to an anonymous "deleted user". Server logs are kept for a limited time for security.</p>
+    <p>We keep account data while your account exists. Page views are deleted after 60 days. When you delete your account, we delete your email, password, sign-in links, comments, votes, saved deals, viewing history, alerts, notification tokens, block list, feedback and reports. Deals and store links you posted stay up, credited to an anonymous "deleted user". Server logs are kept for a limited time for security.</p>
     <h2>Your rights</h2>
     <p>You can see and correct your information, and delete your account at any time from <a href="/account">Your account</a> (see <a href="/delete-account">how to delete your account</a>). You can also ask us for a summary of your data, a correction or erasure, or raise a grievance, by emailing <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>. We respond within 30 days.</p>
     <h2>Children</h2>
@@ -1814,7 +1820,7 @@ async function deleteAccountInfoPage() {
       <li>Sign in, then open <a href="/account"><strong>Your account</strong></a>. In the app, tap <strong>Account</strong> in the bottom bar.</li>
       <li>Under <strong>Delete account</strong>, tap <strong>Delete account…</strong>. On the next page, confirm by ticking the box and typing your username, <strong>DELETE MY ACCOUNT</strong> and your password, then tap <strong>Permanently delete my account</strong>.</li>
     </ol>
-    <p><strong>Deleted straight away:</strong> your email address, password, Google/Facebook sign-in links, sessions, comments, votes, saved deals, viewing history and reports.</p>
+    <p><strong>Deleted straight away:</strong> your email address, password, Google/Facebook sign-in links, sessions, comments, votes, saved deals, viewing history, alerts, notification tokens, block list, feedback and reports.</p>
     <p><strong>Kept:</strong> deals and store links you posted stay visible for the community, credited to an anonymous "deleted user", with nothing linking them to you. Security logs are kept for a limited time.</p>
     <p>Can't sign in? Email <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a> from your account's email address and we'll delete it within 30 days.</p>`,
   );

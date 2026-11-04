@@ -123,9 +123,19 @@ export async function runAlertJob({ db, repo, push, log = console, now = Date.no
   return result;
 }
 
-/** Start the hourly job (production server only). */
+/** Page views older than PAGE_VIEW_DAYS are deleted (the privacy policy promises this). */
+export const PAGE_VIEW_DAYS = 60;
+export async function prunePageViews({ db, now = Date.now() }) {
+  const r = await db.run('DELETE FROM page_views WHERE viewed_at < ?', now - PAGE_VIEW_DAYS * 24 * HOUR);
+  return r.changes;
+}
+
+/** Start the hourly job (production server only): alerts, then housekeeping. */
 export function scheduleAlertJob(deps) {
-  const run = () => runAlertJob(deps).catch((err) => console.error('[alerts] job failed:', err.message));
+  const run = async () => {
+    await runAlertJob(deps).catch((err) => console.error('[alerts] job failed:', err.message));
+    await prunePageViews(deps).catch((err) => console.error('[alerts] pruning page views failed:', err.message));
+  };
   const first = setTimeout(run, 60_000); // a minute after boot, then every hour
   const every = setInterval(run, HOUR);
   first.unref();

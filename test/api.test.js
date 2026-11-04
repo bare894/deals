@@ -1,7 +1,7 @@
 import { generateKeyPairSync } from 'node:crypto';
 import { createPush } from '../src/push.js';
 import { createRepo } from '../src/repo.js';
-import { runAlertJob, matchesPhrase, phraseWords } from '../src/alerts.js';
+import { runAlertJob, prunePageViews, matchesPhrase, phraseWords } from '../src/alerts.js';
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -378,6 +378,10 @@ test('end-to-end: auth, submit, dedup, vote, comment, bookmark, moderation', asy
     assert.equal(r2.matches, 0, 'a deal is announced once per alert');
     assert.equal(pushes.length, 1);
     assert.equal((await me.get('/api/alerts')).data.items.find((a) => a.phrase === 'Glimbo Kettle').matches, 1);
+    // Housekeeping: page views older than 60 days are deleted.
+    await db.run("INSERT INTO page_views (user_id, path, viewed_at) VALUES (?, '/old', ?)", meRow.id, Date.now() - 61 * 86_400_000);
+    assert.ok((await prunePageViews({ db })) >= 1);
+    assert.equal((await db.get("SELECT COUNT(*) AS n FROM page_views WHERE path = '/old'")).n, 0);
   });
 
   await t.test('blocking hides a user\'s deals and comments; reported comments can get their author banned', async () => {
