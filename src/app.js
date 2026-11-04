@@ -83,6 +83,9 @@ export function createApp({
   mailer = mailerFromEnv(),
   pushEnv = process.env,
   pushFetch,
+  // The live site sends pages requested on any other address (the *.up.railway.app domain, bare
+  // sharedeals.in) to PUBLIC_URL with a 301, so search engines only index www.sharedeals.in.
+  canonicalRedirect = process.env.NODE_ENV === 'production',
   // The hourly alerts job runs in the live server only (tests call runAlertJob directly).
   alertJob = process.env.NODE_ENV === 'production',
 }) {
@@ -243,9 +246,18 @@ export function createApp({
     if (mutating) indexNow.afterApi(method, url.pathname, body, result);
   }
 
+  const canonicalOrigin = canonicalRedirect && publicUrl ? new URL(publicUrl).origin : null;
+  const canonicalHost = canonicalOrigin && new URL(canonicalOrigin).host;
+
   return async function handle(req, res) {
     const url = new URL(req.url, 'http://localhost');
     const { pathname } = url;
+    // /api/ stays reachable on every address: Railway's health check and the extension's fallback use it.
+    const host = String(req.headers.host || '').toLowerCase();
+    if (canonicalHost && host && host !== canonicalHost && !pathname.startsWith('/api/') && (req.method === 'GET' || req.method === 'HEAD')) {
+      res.writeHead(301, { location: canonicalOrigin + url.pathname + url.search, 'cache-control': 'public, max-age=86400' });
+      return res.end();
+    }
     try {
       if (pathname.startsWith('/api/')) return await handleApi(req, res, url);
       if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, { error: 'Method not allowed' });

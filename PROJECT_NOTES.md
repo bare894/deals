@@ -94,6 +94,7 @@ npm run make-admin -- --email you@example.com --handle yourname [--password '…
 5. **Domain:** the site lives at **`www.sharedeals.in`**: a CNAME to Railway (`jjk6jv9e.up.railway.app`), DNS at GoDaddy.
    - The bare `sharedeals.in` points at **GoDaddy domain forwarding**, which redirects only the home page to www. Any other path (`/submit`, `/deals/5` …) gets GoDaddy's "HTTP Status: 404 (not found)" page.
    - So `PUBLIC_URL`, the OAuth redirect URIs, the extension and any shared links must all use `https://www.sharedeals.in`.
+   - **Other addresses redirect:** in production, page requests on any host other than `PUBLIC_URL`'s (the `*.up.railway.app` domain, bare `sharedeals.in` if it ever reaches Railway) get a 301 to the same path on `PUBLIC_URL`, so only www is indexed. `/api/*` is exempt so Railway's health check and the extension's fallback keep working. Code: `canonicalRedirect` in `src/app.js`.
    - To make the bare domain work for every path, move DNS to a provider with CNAME flattening (for example Cloudflare, free) and point `sharedeals.in` at Railway as well.
 6. **First admin:** open a shell on the app service (`railway ssh`) and run `npm run make-admin -- --email … --handle …`. It prints a random password once. If the email matches your Google account, "Continue with Google" signs into the same admin account.
 

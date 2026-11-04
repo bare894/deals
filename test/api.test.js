@@ -524,3 +524,27 @@ test('Amazon short links are stored as the full link and shown with our tag', as
   const other = (await client().get('/api/deals?limit=100')).data;
   for (const d of other.items || other.deals || []) for (const o of d.offers || []) if (!/amazon\.in/.test(o.url)) assert.equal(o.buyUrl, o.url);
 });
+
+test('pages on other addresses 301 to PUBLIC_URL; the API stays reachable', async () => {
+  const app = createApp({ db, publicDir: path.join(root, 'public'), rateLimits: false, publicUrl: 'https://www.sharedeals.in', canonicalRedirect: true });
+  const srv = http.createServer(app);
+  await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+  // fetch() won't send a custom Host header, so use http.request.
+  const at = (p, host) =>
+    new Promise((resolve, reject) => {
+      http.get({ host: '127.0.0.1', port: srv.address().port, path: p, headers: { host } }, (r) => {
+        r.resume();
+        resolve({ status: r.statusCode, headers: { get: (k) => r.headers[k] } });
+      }).on('error', reject);
+    });
+  try {
+    const r = await at('/deals/5/some-deal?ref=x', 'deals-production-1ecf.up.railway.app');
+    assert.equal(r.status, 301);
+    assert.equal(r.headers.get('location'), 'https://www.sharedeals.in/deals/5/some-deal?ref=x');
+    assert.equal((await at('/', 'sharedeals.in')).headers.get('location'), 'https://www.sharedeals.in/');
+    assert.equal((await at('/api/health', 'deals-production-1ecf.up.railway.app')).status, 200);
+    assert.equal((await at('/robots.txt', 'www.sharedeals.in')).status, 200);
+  } finally {
+    srv.close();
+  }
+});
