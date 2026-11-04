@@ -135,6 +135,7 @@ export function registerAuthRoutes({ route, db, rateLimit, mailer, publicBase, s
       for (const table of ['votes', 'bookmarks', 'views', 'comments', 'sessions', 'oauth_identities', 'app_login_codes', 'feedback', 'password_resets', 'page_views', 'push_tokens', 'push_log', 'alerts']) {
         await db.run(`DELETE FROM ${table} WHERE user_id = ?`, user.id);
       }
+      await db.run('DELETE FROM user_blocks WHERE blocker_id = ? OR blocked_id = ?', user.id, user.id);
       await db.run('DELETE FROM reports WHERE reporter_id = ?', user.id);
       const tag = randomBytes(4).toString('hex');
       await db.run(

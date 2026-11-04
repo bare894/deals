@@ -84,6 +84,7 @@ export async function runAlertJob({ db, repo, push, log = console, now = Date.no
       return;
     }
     const alerts = await db.all("SELECT a.* FROM alerts a JOIN users u ON u.id = a.user_id WHERE u.status = 'active'");
+    const blocks = new Set((await db.all('SELECT blocker_id, blocked_id FROM user_blocks')).map((b) => `${b.blocker_id}:${b.blocked_id}`));
     result.alerts = alerts.length;
     if (!alerts.length) return;
     const deals = await db.all(`${repo.DEAL_SELECT} WHERE d.status = 'active' AND d.created_at > ? ORDER BY d.created_at DESC LIMIT 2000`, now - LOOKBACK_MS);
@@ -91,7 +92,7 @@ export async function runAlertJob({ db, repo, push, log = console, now = Date.no
     for (const a of alerts) {
       const words = phraseWords(a.phrase);
       for (const d of deals) {
-        if (d.created_at <= a.created_at || d.submitted_by === a.user_id) continue;
+        if (d.created_at <= a.created_at || d.submitted_by === a.user_id || blocks.has(`${a.user_id}:${d.submitted_by}`)) continue;
         if (!matchesPhrase(`${d.title} ${d.best_store || ''}`, words)) continue;
         const fresh = await db.run('INSERT INTO alert_hits (alert_id, deal_id, matched_at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING', a.id, d.id, now);
         if (!fresh.changes) continue;

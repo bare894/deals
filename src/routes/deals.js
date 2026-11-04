@@ -9,9 +9,11 @@ export function registerDealRoutes({ route, db, repo, seo, push, rateLimit, scra
   // ------------------------------------------------------------ discovery (§6, §7)
 
   route('GET', '/api/home', async ({ user }) => {
-    const [latest, hot, fy] = await Promise.all([repo.latest(100), repo.hotSlice(10), repo.forYou(user, 12)]);
-    for (const list of [latest, hot, fy.items]) await repo.attachMyVotes(list, user);
-    return { latest, hot, forYou: fy.items, forYouPersonalized: fy.personalized };
+    const [latest, hot, fy, blocked] = await Promise.all([repo.latest(100), repo.hotSlice(10), repo.forYou(user, 12), repo.blockedIds(user)]);
+    const visible = (list) => list.filter((d) => !blocked.has(d.poster.id));
+    const lists = { latest: visible(latest), hot: visible(hot), forYou: visible(fy.items) };
+    for (const list of Object.values(lists)) await repo.attachMyVotes(list, user);
+    return { ...lists, forYouPersonalized: fy.personalized };
   });
 
   route('GET', '/api/deals', async ({ query, user }) =>
@@ -26,7 +28,31 @@ export function registerDealRoutes({ route, db, repo, seo, push, rateLimit, scra
     }),
   );
 
-  route('GET', '/api/deals/:id/similar', async ({ params, user }) => ({ items: await repo.attachMyVotes(await repo.similar(Number(params.id), 10), user) }));
+  route('GET', '/api/deals/:id/similar', async ({ params, user }) => {
+    const blocked = await repo.blockedIds(user);
+    const items = (await repo.similar(Number(params.id), 10 + blocked.size)).filter((d) => !blocked.has(d.poster.id)).slice(0, 10);
+    return { items: await repo.attachMyVotes(items, user) };
+  });
+
+  // Blocking: a user hides everything another user posts (deals, comments, alerts about their deals).
+  route('GET', '/api/blocks', { auth: true }, async ({ user }) => ({
+    items: (await db.all('SELECT u.id, u.handle, b.created_at FROM user_blocks b JOIN users u ON u.id = b.blocked_id WHERE b.blocker_id = ? ORDER BY b.created_at DESC', user.id))
+      .map((r) => ({ id: r.id, handle: r.handle, blockedAt: r.created_at })),
+  }));
+
+  route('POST', '/api/blocks', { auth: true }, async ({ body, user }) => {
+    const id = Number(body.userId);
+    if (!Number.isInteger(id) || id === user.id) throw new HttpError(400, "You can't block yourself");
+    const target = await db.get("SELECT id, handle FROM users WHERE id = ? AND status <> 'deleted'", id);
+    if (!target) throw new HttpError(404, 'User not found');
+    await db.run('INSERT INTO user_blocks (blocker_id, blocked_id, created_at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING', user.id, id, Date.now());
+    return { ok: true, handle: target.handle };
+  });
+
+  route('DELETE', '/api/blocks/:userId', { auth: true }, async ({ params, user }) => {
+    await db.run('DELETE FROM user_blocks WHERE blocker_id = ? AND blocked_id = ?', user.id, Number(params.userId));
+    return { ok: true };
+  });
 
   /**
    * Page-view log for signed-in users (one row per page opened), used to personalise For You.
@@ -88,6 +114,7 @@ export function registerDealRoutes({ route, db, repo, seo, push, rateLimit, scra
     deal.myVote = 0;
     deal.bookmarked = false;
     deal.canEdit = Boolean(user && user.id === row.submitted_by && row.status === 'active');
+    deal.posterBlocked = Boolean(user && (await db.get('SELECT 1 FROM user_blocks WHERE blocker_id = ? AND blocked_id = ?', user.id, row.submitted_by)));
     if (user) {
       deal.myVote = (await db.get('SELECT value FROM votes WHERE deal_id = ? AND user_id = ?', row.id, user.id))?.value || 0;
       deal.bookmarked = Boolean(await db.get('SELECT 1 FROM bookmarks WHERE deal_id = ? AND user_id = ?', row.id, user.id));
@@ -216,11 +243,13 @@ export function registerDealRoutes({ route, db, repo, seo, push, rateLimit, scra
 
   // ------------------------------------------------------------ comments (§12)
 
-  route('GET', '/api/deals/:id/comments', async ({ params }) => {
+  route('GET', '/api/deals/:id/comments', async ({ params, user }) => {
     const rows = await db.all(
       `SELECT c.id, c.body, c.created_at, u.id AS user_id, u.handle, u.role FROM comments c JOIN users u ON u.id = c.user_id
-        WHERE c.deal_id = ? AND c.status = 'visible' ORDER BY c.created_at ASC LIMIT 500`,
-      Number(params.id),
+        WHERE c.deal_id = ? AND c.status = 'visible'
+          AND NOT EXISTS (SELECT 1 FROM user_blocks ub WHERE ub.blocker_id = ? AND ub.blocked_id = c.user_id)
+        ORDER BY c.created_at ASC LIMIT 500`,
+      Number(params.id), user?.id ?? 0,
     );
     return { comments: rows.map((r) => ({ id: r.id, body: r.body, createdAt: r.created_at, author: { id: r.user_id, handle: r.handle, role: r.role } })) };
   });

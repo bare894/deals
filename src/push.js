@@ -125,6 +125,7 @@ export function createPush({ db, repo, env = process.env, fetchImpl = fetch, log
         data: { url: dealPath(deal), deal_id: String(deal.id), kind: 'deal_alert' },
       };
       for (const { user_id: userId } of users) {
+        if (await db.get('SELECT 1 FROM user_blocks WHERE blocker_id = ? AND blocked_id = ?', userId, row.submitted_by)) continue;
         const profile = await repo.userInterests(userId);
         if (!hasInterests(profile) || interestMatch(row, profile) < ALERT_THRESHOLD) continue;
         if (await sendToUser(userId, message, { dealId, kind: 'match' })) sent++;

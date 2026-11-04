@@ -109,9 +109,19 @@ export function createRepo(db, { amazonTag = null } = {}) {
     return deals;
   }
 
+  /** Ids of the users this user has blocked (their deals and comments are hidden from them). */
+  async function blockedIds(user) {
+    if (!user) return new Set();
+    return new Set((await db.all('SELECT blocked_id FROM user_blocks WHERE blocker_id = ?', user.id)).map((r) => r.blocked_id));
+  }
+
   async function listDeals({ sort = 'new', categorySlug, storeName, q, page = 1, limit = 20, user }) {
     const where = ["d.status = 'active'"];
     const params = [];
+    if (user) {
+      where.push('NOT EXISTS (SELECT 1 FROM user_blocks ub WHERE ub.blocker_id = ? AND ub.blocked_id = d.submitted_by)');
+      params.push(user.id);
+    }
     if (categorySlug) {
       where.push('c.slug = ?');
       params.push(categorySlug);
@@ -458,7 +468,7 @@ export function createRepo(db, { amazonTag = null } = {}) {
 
   return {
     DEAL_SELECT, serializeDeal, serializeOffer, getDealRow, getOfferRow, getDeal, dealOffers, findActiveOfferByHash, storeOnDeal,
-    attachMyVotes, listDeals, similar, latest, hotSlice, forYou, userInterests, findMatches, duplicatePairs,
+    attachMyVotes, blockedIds, listDeals, similar, latest, hotSlice, forYou, userInterests, findMatches, duplicatePairs,
     refreshDealPricing, createDealWithOffer, addOffer, setOfferStatus, removeDeal, restoreDeal, mergeDeals, logAction, resolveReports,
   };
 }

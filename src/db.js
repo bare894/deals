@@ -263,9 +263,19 @@ CREATE TABLE alert_hits (
 );
 ALTER TABLE push_log ADD COLUMN kind TEXT NOT NULL DEFAULT 'match';
 `,
+  // 8: users blocking other users (hides their deals, comments and alerts)
+  `
+CREATE TABLE user_blocks (
+  blocker_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  blocked_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at BIGINT NOT NULL,
+  PRIMARY KEY (blocker_id, blocked_id)
+);
+CREATE INDEX user_blocks_blocked ON user_blocks(blocked_id);
+`,
 ];
 
-const TABLES = ['alert_hits', 'alerts', 'push_log', 'push_tokens', 'page_views', 'password_resets', 'feedback', 'app_login_codes', 'moderation_actions', 'reports', 'views', 'bookmarks', 'comments', 'votes', 'offers', 'deals', 'categories', 'sessions', 'oauth_identities', 'users', 'schema_migrations'];
+const TABLES = ['user_blocks', 'alert_hits', 'alerts', 'push_log', 'push_tokens', 'page_views', 'password_resets', 'feedback', 'app_login_codes', 'moderation_actions', 'reports', 'views', 'bookmarks', 'comments', 'votes', 'offers', 'deals', 'categories', 'sessions', 'oauth_identities', 'users', 'schema_migrations'];
 const INT8 = 20;
 
 /** `?` → `$n`, skipping quoted strings/identifiers. Cached: the SQL texts are a fixed set. */

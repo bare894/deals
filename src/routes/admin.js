@@ -38,8 +38,11 @@ export function registerAdminRoutes({ route, db, repo }) {
         const d = o && (await repo.getDealRow(o.deal_id));
         item.deal = d ? repo.serializeDeal(d) : null;
       } else {
-        const c = await db.get('SELECT c.id, c.body, c.status, c.deal_id, u.handle FROM comments c JOIN users u ON u.id = c.user_id WHERE c.id = ?', g.target_id);
-        item.comment = c ? { id: c.id, body: c.body, status: c.status, dealId: c.deal_id, author: c.handle } : null;
+        const c = await db.get(
+          'SELECT c.id, c.body, c.status, c.deal_id, u.id AS user_id, u.handle, u.status AS user_status, u.role AS user_role FROM comments c JOIN users u ON u.id = c.user_id WHERE c.id = ?',
+          g.target_id,
+        );
+        item.comment = c ? { id: c.id, body: c.body, status: c.status, dealId: c.deal_id, author: c.handle, authorId: c.user_id, authorStatus: c.user_status, authorRole: c.user_role } : null;
       }
       items.push(item);
     }

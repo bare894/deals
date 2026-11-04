@@ -380,6 +380,38 @@ test('end-to-end: auth, submit, dedup, vote, comment, bookmark, moderation', asy
     assert.equal((await me.get('/api/alerts')).data.items.find((a) => a.phrase === 'Glimbo Kettle').matches, 1);
   });
 
+  await t.test('blocking hides a user\'s deals and comments; reported comments can get their author banned', async () => {
+    const me = client();
+    assert.equal((await me.post('/api/auth/register', { email: 'blocker@t.test', handle: 'blocker', password: 'password123' })).status, 200);
+    const pest = client();
+    assert.equal((await pest.post('/api/auth/register', { email: 'pest@t.test', handle: 'pest', password: 'password123' })).status, 200);
+    const pestId = (await db.get("SELECT id FROM users WHERE handle = 'pest'")).id;
+    const theirDeal = (await pest.post('/api/deals', dealBody('https://shop.com/blk-1', { title: 'Vexmo Pest Deal Speaker', confirmNew: true }))).data.deal.id;
+    const host = (await poster.post('/api/deals', dealBody('https://shop.com/blk-2', { title: 'Hostly Desk Lamp', confirmNew: true }))).data.deal.id;
+    const { comment } = (await pest.post(`/api/deals/${host}/comments`, { body: 'you are all idiots' })).data;
+
+    assert.equal((await me.post('/api/blocks', { userId: (await db.get("SELECT id FROM users WHERE handle = 'blocker'")).id })).status, 400, "can't block yourself");
+    assert.equal((await me.post('/api/blocks', { userId: pestId })).status, 200);
+    assert.deepEqual((await me.get('/api/blocks')).data.items.map((b) => b.handle), ['pest']);
+    const home = (await me.get('/api/home')).data;
+    assert.ok(!home.latest.some((d) => d.id === theirDeal), 'their deals are hidden from me');
+    assert.ok(!(await me.get('/api/deals?q=Vexmo')).data.items.length, 'and from search');
+    assert.ok((await anon.get('/api/deals?q=Vexmo')).data.items.length, 'but not from anyone else');
+    assert.ok(!(await me.get(`/api/deals/${host}/comments`)).data.comments.some((c) => c.id === comment.id), 'their comments are hidden from me');
+    assert.equal((await me.get(`/api/deals/${theirDeal}`)).data.deal.posterBlocked, true);
+    assert.equal((await me.del(`/api/blocks/${pestId}`)).status, 200);
+    assert.ok((await me.get(`/api/deals/${host}/comments`)).data.comments.some((c) => c.id === comment.id), 'unblocking shows them again');
+
+    // Report the comment; it reaches Admin → Reports with its author, and an admin can ban them.
+    assert.equal((await me.post(`/api/comments/${comment.id}/report`, { reason: 'offensive' })).status, 200);
+    const report = (await admin.get('/api/admin/reports')).data.items.find((r) => r.targetType === 'comment' && r.targetId === comment.id);
+    assert.equal(report.comment.authorId, pestId);
+    assert.equal(report.comment.authorStatus, 'active');
+    assert.equal((await admin.post(`/api/admin/users/${pestId}/status`, { status: 'banned', reason: 'Abusive comments' })).status, 200);
+    assert.equal((await pest.get('/api/me/bookmarks')).status, 401, 'banned users are signed out');
+    assert.equal((await admin.get('/api/admin/reports')).data.items.find((r) => r.targetId === comment.id).comment.authorStatus, 'banned');
+  });
+
   await t.test('feedback: anyone can send it, moderators read and resolve it', async () => {
     assert.equal((await anon.post('/api/feedback', { message: '' })).status, 400);
     assert.equal((await anon.post('/api/feedback', { message: 'Add Croma please', email: 'nope' })).status, 400);

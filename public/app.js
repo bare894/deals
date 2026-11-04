@@ -409,6 +409,40 @@ const actions = {
     if (!state.user) return goLogin();
     reportModal(btn.dataset.type, btn.dataset.id);
   },
+  async block(btn) {
+    if (!state.user) return goLogin();
+    const { userId, handle } = btn.dataset;
+    const ok = await openModal(
+      html`<form>
+        <h2>Block @${handle}?</h2>
+        <p class="muted">You won't see their deals or comments, and you won't get alerts about deals they post. They aren't told. You can unblock them from Your account.</p>
+        <div class="modal-actions">
+          <button type="button" class="btn" data-close>Cancel</button>
+          <button class="btn btn-danger">Block</button>
+        </div>
+      </form>`,
+      () => true,
+    );
+    if (!ok) return;
+    try {
+      await api('/api/blocks', { method: 'POST', body: { userId: Number(userId) } });
+      track('block_user');
+      toast(`Blocked @${handle}`);
+      renderRoute();
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  },
+  async unblock(btn) {
+    try {
+      await api(`/api/blocks/${btn.dataset.userId}`, { method: 'DELETE' });
+      track('unblock_user');
+      toast(`Unblocked @${btn.dataset.handle}`);
+      renderRoute();
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  },
   async logout() {
     const ok = await openModal(
       html`<form>
@@ -898,8 +932,14 @@ async function detailPage({ params, alive }) {
             ${isMod() ? html`<a class="btn" href="/admin/deals?q=${encodeURIComponent(d.title.slice(0, 40))}">Moderate</a>` : ''}
           </div>
           ${storeList(d, removed)}
+          ${d.posterBlocked
+            ? html`<p class="notice">You've blocked @${d.poster.handle}, so their other deals and comments are hidden. <button class="linkish" data-action="unblock" data-user-id="${d.poster.id}" data-handle="${d.poster.handle}">Unblock</button></p>`
+            : ''}
           <p class="meta-line">Posted by <strong>@${d.poster.handle}</strong> · <span title="${fullDate(d.createdAt)}">${timeAgo(d.createdAt)}</span>
-            · ${d.upvotes} up / ${d.downvotes} down</p>
+            · ${d.upvotes} up / ${d.downvotes} down
+            ${state.user && d.poster.id && state.user.id !== d.poster.id && !d.posterBlocked && !/^deleted_/.test(d.poster.handle || '')
+              ? html` · <button class="linkish" data-action="block" data-user-id="${d.poster.id}" data-handle="${d.poster.handle}">Block @${d.poster.handle}</button>`
+              : ''}</p>
           <h2 style="font-size:17px;margin:20px 0 8px">Deal details</h2>
           ${d.details ? html`<p class="details-text">${d.details}</p>` : html`<p class="muted">No additional details provided.</p>`}
         </div>
@@ -969,7 +1009,10 @@ function commentItem(c) {
     <span class="avatar">${c.author.handle[0]}</span>
     <div style="flex:1;min-width:0">
       <div class="comment-head"><strong>@${c.author.handle}</strong>${roleBadge}<span class="muted small" title="${fullDate(c.createdAt)}">${timeAgo(c.createdAt)}</span>
-        ${canReport ? html`<button class="linkish" data-action="report" data-type="comment" data-id="${c.id}">Report</button>` : ''}</div>
+        ${canReport
+          ? html`<span class="comment-tools"><button class="linkish" data-action="report" data-type="comment" data-id="${c.id}">Report</button>
+              <button class="linkish" data-action="block" data-user-id="${c.author.id}" data-handle="${c.author.handle}">Block</button></span>`
+          : ''}</div>
       <div class="comment-body">${c.body}</div>
     </div>
   </div>`;
@@ -1532,6 +1575,9 @@ async function accountPage() {
       </p>
       <p class="muted small"><a href="/feedback">Send feedback</a> · <a href="/privacy">Privacy Policy</a> · <a href="/terms">Terms</a> · <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
       <hr style="border:0;border-top:1px solid var(--border);margin:24px 0">
+      <h2 style="font-size:18px">Blocked users</h2>
+      <div id="blocked-list"><p class="muted small">Loading…</p></div>
+      <hr style="border:0;border-top:1px solid var(--border);margin:24px 0">
       <h2 style="font-size:18px">Change password</h2>
       ${u.hasPassword
         ? html`<form id="password-form">
@@ -1553,6 +1599,19 @@ async function accountPage() {
     </div>`,
   );
   bindPasswordForm();
+  api('/api/blocks')
+    .then(({ items }) => {
+      const box = $('#blocked-list');
+      if (!box) return;
+      box.innerHTML = String(
+        items.length
+          ? html`<ul class="blocked-list">${items.map(
+              (b) => html`<li><span>@${b.handle}</span><button class="btn btn-sm" data-action="unblock" data-user-id="${b.id}" data-handle="${b.handle}">Unblock</button></li>`,
+            )}</ul>`
+          : html`<p class="muted small">You haven't blocked anyone. To block someone, use "Block" on one of their deals or comments.</p>`,
+      );
+    })
+    .catch(() => {});
 }
 
 const DELETE_PHRASE = 'DELETE MY ACCOUNT';
@@ -1892,6 +1951,11 @@ async function adminReports({ shell, alive, reload, summary }) {
       </div>
       <div style="display:flex;flex-direction:column;gap:6px">
         ${c?.status === 'visible' ? html`<button class="btn btn-sm btn-danger" data-adm="removeComment" data-id="${r.targetId}">Remove comment</button>` : html`<span class="badge status-removed">Already removed</span>`}
+        ${isAdmin() && c && c.authorRole === 'user'
+          ? c.authorStatus === 'banned'
+            ? html`<span class="badge status-removed">@${c.author} banned</span>`
+            : html`<button class="btn btn-sm btn-danger" data-adm="banUser" data-id="${c.authorId}" data-handle="${c.author}">Ban @${c.author}</button>`
+          : ''}
         <button class="btn btn-sm" data-adm="dismiss" data-type="comment" data-id="${r.targetId}">Dismiss</button>
       </div>
     </div>`;
@@ -1900,6 +1964,11 @@ async function adminReports({ shell, alive, reload, summary }) {
   bindAdminActions($('#admin-body'), {
     removeDeal: ({ id }) => removeDeal(id, reload),
     removeComment: ({ id }) => removeComment(id, reload),
+    banUser: async ({ id, handle }) => {
+      const reason = await askReason({ title: `Ban @${handle}?`, label: 'Reason', confirm: 'Ban user', danger: true, placeholderText: 'e.g. Repeated abusive comments' });
+      if (reason === null) return;
+      modAction(() => api(`/api/admin/users/${id}/status`, { method: 'POST', body: { status: 'banned', reason } }), `@${handle} banned`, reload);
+    },
     dismiss: ({ type, id }) => modAction(() => api('/api/admin/reports/dismiss', { method: 'POST', body: { targetType: type, targetId: Number(id) } }), 'Reports dismissed', reload),
   });
 }
