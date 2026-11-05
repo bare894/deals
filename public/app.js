@@ -375,7 +375,7 @@ const actions = {
       updateVoteWidgets(id, r.myVote, r.score);
       updateExpiredTags(id, r.expired);
       track('vote', { deal_id: id, value: value === 1 ? 'up' : value === -1 ? 'down' : 'clear', reason: reason || undefined });
-      if (reason === 'expired') toast('Marked as expired. Thanks!');
+      if (reason === 'expired') toast(r.expired ? 'This deal is now marked as expired. Thanks!' : 'Thanks! A moderator will check this deal.');
       if (widget.closest('.detail')) renderRoute(); // the banner and buttons depend on the vote
     } catch (err) {
       if (err.status === 401) return goLogin();
@@ -948,7 +948,7 @@ async function detailPage({ params, alive }) {
       ${removed ? html`<div class="banner removed">This deal was removed by a moderator and is only visible to moderators.</div>` : ''}
       ${d.expired && !removed
         ? html`<div class="banner expired">This deal has been marked as expired, so this price may no longer be available.
-            ${d.canExpire ? html`<button class="linkish" data-action="setExpired" data-id="${d.id}" data-value="0">It's still live</button>` : ''}</div>`
+            ${d.canRestoreExpired ? html`<button class="linkish" data-action="setExpired" data-id="${d.id}" data-value="0">It's still live</button>` : ''}</div>`
         : ''}
       <nav class="breadcrumbs" aria-label="Breadcrumb"><ol>
         <li><a href="/">Home</a></li>
@@ -1903,6 +1903,7 @@ function authForm(sel, endpoint, query) {
 
 const ADMIN_TABS = [
   ['reports', 'Reports', false],
+  ['expiry', 'Expired deals', false],
   ['deals', 'Deals', false],
   ['comments', 'Comments', false],
   ['users', 'Users & roles', true],
@@ -1929,14 +1930,14 @@ async function adminPage({ params, query, alive }) {
         <nav class="admin-nav" aria-label="Admin sections">
           ${ADMIN_TABS.filter(([, , adminOnly]) => !adminOnly || isAdmin()).map(
             ([k, label]) =>
-              html`<a href="/admin/${k}" class="${k === tab ? 'active' : ''}">${label}${k === 'reports' && summary.openReports ? html`<span class="count">${summary.openReports}</span>` : ''}${k === 'feedback' && summary.newFeedback ? html`<span class="count">${summary.newFeedback}</span>` : ''}</a>`,
+              html`<a href="/admin/${k}" class="${k === tab ? 'active' : ''}">${label}${k === 'reports' && summary.openReports ? html`<span class="count">${summary.openReports}</span>` : ''}${k === 'expiry' && summary.expiryReviews ? html`<span class="count">${summary.expiryReviews}</span>` : ''}${k === 'feedback' && summary.newFeedback ? html`<span class="count">${summary.newFeedback}</span>` : ''}</a>`,
           )}
         </nav>
         <div id="admin-body">${content}</div>
       </div>`,
     );
   const reload = () => renderRoute();
-  const handlers = { reports: adminReports, deals: adminDeals, comments: adminComments, users: adminUsers, categories: adminCategories, blocked: adminBlocked, feedback: adminFeedback, audit: adminAudit };
+  const handlers = { reports: adminReports, expiry: adminExpiry, deals: adminDeals, comments: adminComments, users: adminUsers, categories: adminCategories, blocked: adminBlocked, feedback: adminFeedback, audit: adminAudit };
   await handlers[tab]({ shell, query, alive, reload, summary });
 }
 
@@ -2051,6 +2052,43 @@ function bindToolbar() {
     go();
   });
   $('select', f)?.addEventListener('change', go);
+}
+
+async function adminExpiry({ shell, query, alive, reload, summary }) {
+  const expired = query.get('status') === 'expired';
+  const { items } = await api(`/api/admin/expiry${expired ? '?status=expired' : ''}`);
+  if (!alive()) return;
+  const votes = (d) => html`${d.expiredVotes} ${d.expiredVotes === 1 ? 'person' : 'people'} said expired`;
+  const how = (d) => (d.expiredByPoster ? `Marked by the poster, @${d.expiredBy}` : d.expiredBy ? `Decided by @${d.expiredBy}` : 'Expired automatically by votes');
+  const card = (d) => html`<div class="report-card">
+    <img class="thumb" ${productImg(d.imageUrl, 80, d.store)} data-label="${d.store}" alt="">
+    <div class="grow">
+      <div class="small muted">${expired ? html`${how(d)} · ${timeAgo(d.expiredAt)}${d.expiredVotes ? html` · ${votes(d)}` : ''}` : html`${votes(d)} · last ${timeAgo(d.lastVoteAt)}`}</div>
+      <a class="cell-title" href="${dealPath(d)}" target="_blank" rel="noopener">${d.title}</a>
+      <div class="small muted">Posted by @${d.poster.handle} · ${timeAgo(d.createdAt)}</div>
+      ${(d.offers || []).map(
+        (o) => html`<div class="small">${money(o.price)}${o.fullPrice ? html` (MRP ${money(o.fullPrice)})` : ''} on ${o.store} · <a href="${o.url}" target="_blank" rel="noopener noreferrer nofollow">Check price ↗</a></div>`,
+      )}
+    </div>
+    <div style="display:flex;flex-direction:column;gap:6px">
+      ${expired ? '' : html`<button class="btn btn-sm btn-danger" data-adm="expire" data-id="${d.id}">Deal has expired</button>`}
+      <button class="btn btn-sm" data-adm="keep" data-id="${d.id}">${expired ? 'Bring back: still live' : 'Still live'}</button>
+    </div>
+  </div>`;
+  shell(html`<div class="actions" style="margin-top:0">
+      <a class="btn ${expired ? '' : 'btn-primary'}" href="/admin/expiry">To review${summary.expiryReviews ? ` (${summary.expiryReviews})` : ''}</a>
+      <a class="btn ${expired ? 'btn-primary' : ''}" href="/admin/expiry?status=expired">Expired</a>
+    </div>
+    ${items.length
+      ? items.map(card)
+      : expired
+        ? emptyState('No expired deals', 'Deals you or the community expire will show here.')
+        : emptyState('All clear', 'No deals waiting for a price check.')}`);
+  const decide = (id, value, msg) => modAction(() => api(`/api/deals/${id}/expired`, { method: 'POST', body: { expired: value } }), msg, reload);
+  bindAdminActions($('#admin-body'), {
+    expire: ({ id }) => decide(id, true, 'Deal marked as expired'),
+    keep: ({ id }) => decide(id, false, 'Deal is live'),
+  });
 }
 
 async function adminDeals({ shell, query, alive, reload }) {

@@ -13,10 +13,12 @@ export function registerAdminRoutes({ route, db, repo, blocklist }) {
               (SELECT COUNT(*) FROM deals WHERE status = 'active') AS active_deals,
               (SELECT COUNT(*) FROM deals WHERE created_at > ?) AS deals_today,
               (SELECT COUNT(*) FROM users) AS users,
-              (SELECT COUNT(*) FROM feedback WHERE status = 'new') AS new_feedback`,
+              (SELECT COUNT(*) FROM feedback WHERE status = 'new') AS new_feedback,
+              (SELECT COUNT(*) FROM deals d WHERE d.status = 'active' AND d.expired_at IS NULL
+                 AND EXISTS (SELECT 1 FROM votes v WHERE v.deal_id = d.id AND v.reason = 'expired')) AS expiry_reviews`,
       Date.now() - DAY,
     );
-    return { openReports: r.open_reports, activeDeals: r.active_deals, dealsToday: r.deals_today, users: r.users, newFeedback: r.new_feedback };
+    return { openReports: r.open_reports, activeDeals: r.active_deals, dealsToday: r.deals_today, users: r.users, newFeedback: r.new_feedback, expiryReviews: r.expiry_reviews };
   });
 
   // ------------------------------------------------------------ report queue
@@ -56,6 +58,27 @@ export function registerAdminRoutes({ route, db, repo, blocklist }) {
     const n = await repo.resolveReports(targetType, targetId, user.id, 'dismissed');
     if (n) await repo.logAction(user.id, targetType, targetId, 'dismiss_reports', str(body.reason, 'Reason', { max: 300 }));
     return { dismissed: n };
+  });
+
+  // ------------------------------------------------------------ expired deals
+
+  // "review": users said expired, a moderator checks the price and decides (POST /api/deals/:id/expired).
+  // "expired": everything already expired, whether by votes, a moderator or the poster.
+  route('GET', '/api/admin/expiry', MOD, async ({ query }) => {
+    const expired = query.get('status') === 'expired';
+    const rows = await db.all(
+      `${repo.DEAL_SELECT}
+        WHERE d.status = 'active' AND ${expired ? 'd.expired_at IS NOT NULL' : "d.expired_at IS NULL AND EXISTS (SELECT 1 FROM votes v WHERE v.deal_id = d.id AND v.reason = 'expired')"}
+        ORDER BY ${expired ? 'd.expired_at' : "(SELECT MAX(v.created_at) FROM votes v WHERE v.deal_id = d.id AND v.reason = 'expired')"} DESC LIMIT 200`,
+    );
+    const items = [];
+    for (const r of rows) {
+      const deal = await repo.getDeal(r.id);
+      const { n, last_at: lastAt } = await db.get("SELECT COUNT(*) AS n, MAX(created_at) AS last_at FROM votes WHERE deal_id = ? AND reason = 'expired'", r.id);
+      const by = r.expired_by ? await db.get('SELECT handle FROM users WHERE id = ?', r.expired_by) : null;
+      items.push({ ...deal, expiredVotes: Number(n), lastVoteAt: lastAt, expiredAt: r.expired_at, expiredBy: by?.handle || null, expiredByPoster: r.expired_by === r.submitted_by });
+    }
+    return { items };
   });
 
   // ------------------------------------------------------------ deals

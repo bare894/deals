@@ -384,6 +384,13 @@ ALTER TABLE votes ADD COLUMN reason TEXT CHECK (reason IN ('expired','price_high
 ALTER TABLE deals ADD COLUMN expired_at BIGINT;
 ALTER TABLE deals ADD COLUMN expired_by INTEGER REFERENCES users(id) ON DELETE SET NULL;
 `,
+  // 11: a single "Deal expired" vote no longer expires a deal; it goes to Admin Mode → Expired deals
+  //     unless 5 people voted. Deals that fewer votes already expired go back to live, to be reviewed.
+  `
+UPDATE deals d SET expired_at = NULL
+ WHERE d.expired_at IS NOT NULL AND d.expired_by IS NULL
+   AND (SELECT COUNT(*) FROM votes v WHERE v.deal_id = d.id AND v.reason = 'expired') < 5;
+`,
 ];
 
 const TABLES = ['blocked_terms', 'user_blocks', 'alert_hits', 'alerts', 'push_log', 'push_tokens', 'page_views', 'password_resets', 'feedback', 'app_login_codes', 'moderation_actions', 'reports', 'views', 'bookmarks', 'comments', 'votes', 'offers', 'deals', 'categories', 'sessions', 'oauth_identities', 'users', 'schema_migrations'];

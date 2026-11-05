@@ -115,6 +115,7 @@ export function registerDealRoutes({ route, db, repo, seo, push, rateLimit, scra
     deal.bookmarked = false;
     deal.canEdit = Boolean(user && user.id === row.submitted_by && row.status === 'active');
     deal.canExpire = Boolean(user && (user.id === row.submitted_by || isMod(user)) && row.status === 'active');
+    deal.canRestoreExpired = Boolean(deal.canExpire && (isMod(user) || row.expired_by === user.id));
     deal.priceHighVotes = (await db.get("SELECT COUNT(*) AS n FROM votes WHERE deal_id = ? AND reason = 'price_high'", row.id)).n;
     deal.posterBlocked = Boolean(user && (await db.get('SELECT 1 FROM user_blocks WHERE blocker_id = ? AND blocked_id = ?', user.id, row.submitted_by)));
     if (user) {
@@ -257,21 +258,33 @@ export function registerDealRoutes({ route, db, repo, seo, push, rateLimit, scra
     });
   });
 
-  // The poster or a moderator can mark a deal expired, or bring it back if it's still live.
+  // Moderators decide: expired, or still live (which clears the "Deal expired" votes). The poster can
+  // mark their own deal expired, and undo only that; what the community voted isn't theirs to undo.
   route('POST', '/api/deals/:id/expired', { auth: true, active: true }, async ({ params, body, user }) => {
     const dealId = Number(params.id);
     const expired = Boolean(body.expired);
     return tx(db, async () => {
-      const deal = await db.get('SELECT id, submitted_by, status FROM deals WHERE id = ? FOR UPDATE', dealId);
+      const deal = await db.get('SELECT id, submitted_by, status, expired_at, expired_by FROM deals WHERE id = ? FOR UPDATE', dealId);
       if (!deal || deal.status !== 'active') throw new HttpError(404, 'Deal not found');
-      if (deal.submitted_by !== user.id && !isMod(user)) throw new HttpError(403, 'Only the poster or a moderator can do this');
-      if (expired) await db.run('UPDATE deals SET expired_at = COALESCE(expired_at, ?), expired_by = ? WHERE id = ?', Date.now(), user.id, dealId);
-      else {
-        await db.run('UPDATE deals SET expired_at = NULL, expired_by = NULL WHERE id = ?', dealId);
-        // Earlier "Deal expired" votes stay downvotes but no longer count towards expiring it.
-        await db.run("UPDATE votes SET reason = NULL WHERE deal_id = ? AND reason = 'expired'", dealId);
+      const mod = isMod(user);
+      if (deal.submitted_by !== user.id && !mod) throw new HttpError(403, 'Only the poster or a moderator can do this');
+      if (expired) {
+        await db.run('UPDATE deals SET expired_at = COALESCE(expired_at, ?), expired_by = ? WHERE id = ?', Date.now(), user.id, dealId);
+        if (mod) await repo.logAction(user.id, 'deal', dealId, 'expire');
+        return { expired: true };
       }
-      return { expired };
+      if (mod) {
+        await db.run('UPDATE deals SET expired_at = NULL, expired_by = NULL WHERE id = ?', dealId);
+        // Those votes stay downvotes but no longer count towards expiring it.
+        await db.run("UPDATE votes SET reason = NULL WHERE deal_id = ? AND reason = 'expired'", dealId);
+        await repo.logAction(user.id, 'deal', dealId, 'keep live');
+        return { expired: false };
+      }
+      if (deal.expired_at && deal.expired_by !== user.id) throw new HttpError(403, 'Only a moderator can bring this deal back');
+      const { n } = await db.get("SELECT COUNT(*) AS n FROM votes WHERE deal_id = ? AND reason = 'expired'", dealId);
+      const still = Number(n) >= EXPIRE_VOTES;
+      await db.run('UPDATE deals SET expired_at = ?, expired_by = NULL WHERE id = ?', still ? deal.expired_at : null, dealId);
+      return { expired: still };
     });
   });
 

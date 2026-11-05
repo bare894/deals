@@ -30,6 +30,7 @@ before(async () => {
   await add('poster', 'user');
   await add('voter', 'user');
   await add('troll', 'user');
+  for (const handle of ['exp1', 'exp2', 'exp3', 'exp4']) await add(handle, 'user');
   const app = createApp({
     db,
     publicDir: path.join(root, 'public'),
@@ -175,34 +176,66 @@ test('end-to-end: auth, submit, dedup, vote, comment, bookmark, moderation', asy
     assert.equal((await voter.post(`/api/deals/${dealId}/vote`, { value: 5 })).status, 400);
   });
 
-  await t.test('downvote reasons and expired deals', async () => {
+  await t.test('downvote reasons and the expiry workflow', async () => {
+    const adminUser = client();
+    await adminUser.login('mod');
+    const queue = async (status = '') => (await adminUser.get(`/api/admin/expiry${status}`)).data.items.map((x) => x.id);
+    const others = [];
+    for (const handle of ['exp1', 'exp2', 'exp3', 'exp4']) {
+      const c = client();
+      await c.login(handle);
+      others.push(c);
+    }
     assert.equal((await voter.post(`/api/deals/${dealId}/vote`, { value: -1, reason: 'bogus' })).status, 400);
     let r = await voter.post(`/api/deals/${dealId}/vote`, { value: -1, reason: 'price_high' });
     assert.deepEqual([r.data.score, r.data.expired], [-1, false]);
     assert.equal((await voter.get(`/api/deals/${dealId}`)).data.deal.priceHighVotes, 1);
-    // Changing the reason marks it expired without counting a second downvote.
+    assert.deepEqual(await queue(), [], 'price votes are not reviewed');
+    // One "Deal expired" vote: moderators review it, the deal stays live.
     r = await voter.post(`/api/deals/${dealId}/vote`, { value: -1, reason: 'expired' });
-    assert.deepEqual([r.data.score, r.data.downvotes, r.data.expired], [-1, 1, true]);
-    let d = (await anon.get(`/api/deals/${dealId}`)).data.deal;
-    assert.deepEqual([d.status, d.expired], ['active', true], 'still visible');
-    const onHome = async () => (await anon.get('/api/home')).data.latest.some((x) => x.id === dealId);
-    assert.equal(await onHome(), false, 'off the home page');
-    assert.ok((await anon.get('/api/deals')).data.items.some((x) => x.id === dealId && x.expired), 'tagged in All deals');
-    // Taking the vote back brings it back.
+    assert.deepEqual([r.data.score, r.data.downvotes, r.data.expired], [-1, 1, false]);
+    assert.deepEqual(await queue(), [dealId]);
+    assert.equal((await adminUser.get('/api/admin/summary')).data.expiryReviews, 1);
+    assert.equal((await voter.get('/api/admin/expiry')).status, 403);
+    assert.equal((await anon.get(`/api/deals/${dealId}`)).data.deal.expired, false);
     r = await voter.post(`/api/deals/${dealId}/vote`, { value: 0 });
-    assert.equal(r.data.expired, false);
-    assert.equal(await onHome(), true);
-    // Only the poster or a moderator can mark it by hand; their mark survives votes coming and going.
+    assert.deepEqual(await queue(), [], 'taking the vote back leaves the queue');
+    // A moderator says it's still live: the votes stop counting.
+    await voter.post(`/api/deals/${dealId}/vote`, { value: -1, reason: 'expired' });
     assert.equal((await voter.post(`/api/deals/${dealId}/expired`, { expired: true })).status, 403);
+    assert.equal((await adminUser.post(`/api/deals/${dealId}/expired`, { expired: false })).status, 200);
+    assert.deepEqual(await queue(), []);
+    await voter.post(`/api/deals/${dealId}/vote`, { value: 0 });
+    // A moderator confirms it: expired, in the Expired list, off the home page but still tagged in All deals.
+    await voter.post(`/api/deals/${dealId}/vote`, { value: -1, reason: 'expired' });
+    assert.equal((await adminUser.post(`/api/deals/${dealId}/expired`, { expired: true })).status, 200);
+    assert.deepEqual([await queue(), await queue('?status=expired')], [[], [dealId]]);
+    const onHome = async () => (await anon.get('/api/home')).data.latest.some((x) => x.id === dealId);
+    assert.equal(await onHome(), false);
+    assert.ok((await anon.get('/api/deals')).data.items.some((x) => x.id === dealId && x.expired));
+    assert.equal((await voter.post(`/api/deals/${dealId}/vote`, { value: 0 })).data.expired, true, 'the decision outlasts the vote');
+    await adminUser.post(`/api/deals/${dealId}/expired`, { expired: false });
+    // Five different people: expired automatically, shown in the Expired list.
+    await voter.post(`/api/deals/${dealId}/vote`, { value: -1, reason: 'expired' });
+    for (const [i, c] of others.slice(0, 3).entries()) assert.equal((await c.post(`/api/deals/${dealId}/vote`, { value: -1, reason: 'expired' })).data.expired, false, `vote ${i + 2}`);
+    assert.equal((await others[3].post(`/api/deals/${dealId}/vote`, { value: -1, reason: 'expired' })).data.expired, true);
+    assert.deepEqual([await queue(), await queue('?status=expired')], [[], [dealId]]);
+    let item = (await adminUser.get('/api/admin/expiry?status=expired')).data.items[0];
+    assert.deepEqual([item.expiredVotes, item.expiredBy], [5, null]);
+    assert.ok(item.offers[0].url);
+    // The poster can't overrule the community; a moderator can.
+    assert.equal((await poster.post(`/api/deals/${dealId}/expired`, { expired: false })).status, 403);
+    assert.equal((await poster.get(`/api/deals/${dealId}`)).data.deal.canRestoreExpired, false);
+    assert.equal((await adminUser.post(`/api/deals/${dealId}/expired`, { expired: false })).status, 200);
+    for (const c of others) await c.post(`/api/deals/${dealId}/vote`, { value: 0 });
+    // The poster can mark their own deal and undo that, which leaves pending votes for review.
+    await voter.post(`/api/deals/${dealId}/vote`, { value: -1, reason: 'expired' });
     assert.equal((await poster.post(`/api/deals/${dealId}/expired`, { expired: true })).status, 200);
-    await voter.post(`/api/deals/${dealId}/vote`, { value: -1, reason: 'expired' });
-    r = await voter.post(`/api/deals/${dealId}/vote`, { value: 0 });
-    assert.equal(r.data.expired, true);
-    // Bringing it back also retires earlier "Deal expired" votes.
-    await voter.post(`/api/deals/${dealId}/vote`, { value: -1, reason: 'expired' });
-    assert.equal((await poster.post(`/api/deals/${dealId}/expired`, { expired: false })).status, 200);
-    d = (await voter.get(`/api/deals/${dealId}`)).data.deal;
-    assert.deepEqual([d.expired, d.myVote], [false, -1]);
+    item = (await adminUser.get('/api/admin/expiry?status=expired')).data.items[0];
+    assert.equal(item.expiredByPoster, true);
+    assert.equal((await poster.post(`/api/deals/${dealId}/expired`, { expired: false })).data.expired, false);
+    assert.deepEqual(await queue(), [dealId]);
+    await adminUser.post(`/api/deals/${dealId}/expired`, { expired: false });
     await voter.post(`/api/deals/${dealId}/vote`, { value: 1 });
   });
 

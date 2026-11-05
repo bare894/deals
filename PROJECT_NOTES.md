@@ -249,7 +249,7 @@ npm run make-admin -- --email you@example.com --handle yourname [--password '…
 ### More downvote reasons
 *Added 2026-11-03. Inspired by Slickdeals' "Why are you downvoting this deal?" prompt.*
 
-**Built so far (migration 10):** a downvote asks "Deal expired" or "Price is high", stored in `votes.reason`. `EXPIRE_VOTES` in `src/routes/common.js` is how many "Deal expired" votes mark a deal expired (currently 1). An expired deal keeps `status = 'active'` with `deals.expired_at` set: its page and All deals still show it, tagged, but it leaves the home page, Hot, For You, similar deals and alerts. The poster or a moderator can mark it expired or bring it back.
+**Built so far (migration 10):** a downvote asks "Deal expired" or "Price is high", stored in `votes.reason`. A "Deal expired" vote doesn't expire the deal: it goes to Admin Mode → Expired deals (separate from Reports), where a moderator checks the store price and picks "Deal has expired" or "Still live" (which clears those votes). `EXPIRE_VOTES` in `src/routes/common.js` (5) different people voting expires it automatically; it then shows in that section's Expired list, where a moderator can still bring it back. An expired deal keeps `status = 'active'` with `deals.expired_at` set: its page and All deals still show it, tagged, but it leaves the home page, Hot, For You, similar deals and alerts. The poster can mark their own deal expired and undo only that.
 
 The original idea, for what's left to build (four choices):
 

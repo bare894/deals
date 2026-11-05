@@ -291,7 +291,9 @@ Available to any signed-in user on the website, the Android app, and via the ext
 - **Self-votes are blocked**; vote buttons are disabled on your own deals.
 
 **Downvote reasons (built).** A downvote asks why: *Deal expired* or *Price is high*.
-- *Deal expired* marks the deal expired (`EXPIRE_VOTES`, currently 1 vote). It stays reachable and tagged "Expired" in All deals, but leaves the home page, Hot, For You, similar deals and alerts. Taking the vote back undoes it. The poster or a moderator can also mark it expired or bring it back.
+- *Deal expired* sends the deal to **Admin Mode → Expired deals**, a workflow separate from Reports. The deal stays live while a moderator checks the store price and decides *Deal has expired* or *Still live*.
+- **5 or more different people** voting *Deal expired* (`EXPIRE_VOTES`) expires it automatically. It shows in that section's Expired list, and a moderator can still bring it back.
+- An expired deal stays reachable and tagged "Expired" in All deals, but leaves the home page, Hot, For You, similar deals and alerts. The poster can mark their own deal expired and undo only that.
 - *Price is high* is a normal downvote, counted on the deal page.
 
 **Planned:** *Wrong info* and *Spam or repost* reasons. Details in [PROJECT_NOTES.md §14](PROJECT_NOTES.md).
@@ -473,7 +475,7 @@ Prices are stored as integer paise; timestamps as epoch milliseconds. Schema cha
 | 13 | Extension browsers | Chrome and Edge; Firefox and store listings planned. |
 
 **New open questions**
-1. How many "Deal expired" downvotes should expire a deal (currently 1), and should they count against the poster? (§11)
+1. Should "Deal expired" downvotes count against the poster? (§11)
 2. When to list the extension in the Chrome Web Store / Edge Add-ons.
 3. Which affiliate programs to use for Flipkart, Myntra and the other stores (direct programs or an aggregator such as Cuelinks)?
 
