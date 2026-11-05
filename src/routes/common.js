@@ -15,6 +15,9 @@ function notApproved(approvedStores) {
 
 export const ROLE_RANK = { user: 0, moderator: 1, admin: 2 };
 export const isMod = (user) => Boolean(user && ROLE_RANK[user.role] >= ROLE_RANK.moderator);
+export const DOWNVOTE_REASONS = ['expired', 'price_high'];
+// How many "Deal expired" downvotes mark a deal as expired.
+export const EXPIRE_VOTES = 1;
 export const REPORT_REASONS = ['spam', 'expired', 'wrong_price', 'duplicate', 'offensive', 'other'];
 
 export function publicUser(u) {

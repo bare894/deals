@@ -184,6 +184,7 @@ th .th-sort:hover { color: var(--text, inherit); }
 .card-foot { margin-top: auto; padding-top: 6px; display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
 .card-foot > span { white-space: nowrap; }
 .card.is-removed { opacity: 0.7; }
+.card.is-expired .card-media img { opacity: 0.5; }
 .removed-tag { position: absolute; inset: auto 8px 8px auto; background: var(--danger); color: #fff; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 6px; }
 
 /* ---------- vote widget ---------- */
@@ -232,6 +233,7 @@ th .th-sort:hover { color: var(--text, inherit); }
 .details-text { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--surface-2); border-radius: 10px; padding: 14px 16px; margin: 0; }
 .banner { padding: 12px 16px; border-radius: 10px; margin-bottom: 16px; font-weight: 600; }
 .banner.removed { background: var(--danger-soft); color: var(--danger); }
+.banner.expired { background: var(--surface-2); border: 1px solid var(--border); }
 
 .comments { margin-top: 28px; max-width: 820px; }
 .comment { display: flex; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--border); }
@@ -305,6 +307,7 @@ td.actions-cell .btn + .btn { margin-left: 6px; }
 .modal form { padding: 22px; }
 .modal h2 { margin: 0 0 14px; font-size: 19px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 8px; }
+.reason-choices { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
 .radio-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
 .radio-list label { display: flex; gap: 10px; align-items: center; padding: 8px 12px; border: 1px solid var(--border); border-radius: 10px; cursor: pointer; font-weight: 500; }
 .radio-list label:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }

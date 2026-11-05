@@ -175,6 +175,37 @@ test('end-to-end: auth, submit, dedup, vote, comment, bookmark, moderation', asy
     assert.equal((await voter.post(`/api/deals/${dealId}/vote`, { value: 5 })).status, 400);
   });
 
+  await t.test('downvote reasons and expired deals', async () => {
+    assert.equal((await voter.post(`/api/deals/${dealId}/vote`, { value: -1, reason: 'bogus' })).status, 400);
+    let r = await voter.post(`/api/deals/${dealId}/vote`, { value: -1, reason: 'price_high' });
+    assert.deepEqual([r.data.score, r.data.expired], [-1, false]);
+    assert.equal((await voter.get(`/api/deals/${dealId}`)).data.deal.priceHighVotes, 1);
+    // Changing the reason marks it expired without counting a second downvote.
+    r = await voter.post(`/api/deals/${dealId}/vote`, { value: -1, reason: 'expired' });
+    assert.deepEqual([r.data.score, r.data.downvotes, r.data.expired], [-1, 1, true]);
+    let d = (await anon.get(`/api/deals/${dealId}`)).data.deal;
+    assert.deepEqual([d.status, d.expired], ['active', true], 'still visible');
+    const onHome = async () => (await anon.get('/api/home')).data.latest.some((x) => x.id === dealId);
+    assert.equal(await onHome(), false, 'off the home page');
+    assert.ok((await anon.get('/api/deals')).data.items.some((x) => x.id === dealId && x.expired), 'tagged in All deals');
+    // Taking the vote back brings it back.
+    r = await voter.post(`/api/deals/${dealId}/vote`, { value: 0 });
+    assert.equal(r.data.expired, false);
+    assert.equal(await onHome(), true);
+    // Only the poster or a moderator can mark it by hand; their mark survives votes coming and going.
+    assert.equal((await voter.post(`/api/deals/${dealId}/expired`, { expired: true })).status, 403);
+    assert.equal((await poster.post(`/api/deals/${dealId}/expired`, { expired: true })).status, 200);
+    await voter.post(`/api/deals/${dealId}/vote`, { value: -1, reason: 'expired' });
+    r = await voter.post(`/api/deals/${dealId}/vote`, { value: 0 });
+    assert.equal(r.data.expired, true);
+    // Bringing it back also retires earlier "Deal expired" votes.
+    await voter.post(`/api/deals/${dealId}/vote`, { value: -1, reason: 'expired' });
+    assert.equal((await poster.post(`/api/deals/${dealId}/expired`, { expired: false })).status, 200);
+    d = (await voter.get(`/api/deals/${dealId}`)).data.deal;
+    assert.deepEqual([d.expired, d.myVote], [false, -1]);
+    await voter.post(`/api/deals/${dealId}/vote`, { value: 1 });
+  });
+
   await t.test('comments: public read, signed-in write', async () => {
     assert.equal((await anon.post(`/api/deals/${dealId}/comments`, { body: 'hi' })).status, 401);
     const c = await troll.post(`/api/deals/${dealId}/comments`, { body: '<script>alert(1)</script> buy elsewhere' });

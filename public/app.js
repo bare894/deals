@@ -197,6 +197,24 @@ function askReason({ title, label = 'Reason', confirm = 'Confirm', danger = fals
   ).then((v) => (v === null ? null : v === true ? '' : v));
 }
 
+/** Ask why on a downvote. Resolves to 'expired', 'price_high', or null if cancelled. */
+function askDownvoteReason() {
+  const picked = openModal(
+    html`<form>
+      <h2>Why are you downvoting?</h2>
+      <input type="hidden" name="reason">
+      <div class="reason-choices">
+        <button class="btn btn-lg" data-reason="expired">Deal expired</button>
+        <button class="btn btn-lg" data-reason="price_high">Price is high</button>
+      </div>
+      <div class="modal-actions"><button type="button" class="btn" data-close>Cancel</button></div>
+    </form>`,
+    (fd) => fd.get('reason'),
+  );
+  for (const b of $$('[data-reason]', modal)) b.addEventListener('click', () => { $('[name=reason]', modal).value = b.dataset.reason; });
+  return picked;
+}
+
 const REPORT_REASONS = [
   ['spam', 'Spam or self-promotion'],
   ['expired', 'Deal expired / out of stock'],
@@ -289,13 +307,15 @@ function voteWidget(d, { large = false } = {}) {
 
 function dealCard(d, { hot = false, extra = '', priority = false } = {}) {
   const removed = d.status !== 'active';
-  return html`<article class="card ${removed ? 'is-removed' : ''}">
+  const expired = d.expired && !removed;
+  return html`<article class="card ${removed ? 'is-removed' : ''} ${expired ? 'is-expired' : ''}">
     ${removed ? '' : html`<a class="card-link" href="${dealPath(d)}" aria-label="${d.title}"></a>`}
     <div class="card-media">
       <img ${productImg(d.imageUrl, 300, d.store, { priority })} data-label="${d.store}" alt="">
       ${d.discountPct ? html`<span class="pill-off">−${d.discountPct}%</span>` : ''}
       ${hot && d.score >= 20 ? html`<span class="pill-hot">🔥 Hot</span>` : ''}
       ${removed ? html`<span class="removed-tag">No longer available</span>` : ''}
+      ${expired ? html`<span class="removed-tag expired-tag">Expired</span>` : ''}
     </div>
     <div class="card-body">
       <div class="card-store">${d.store}</div>
@@ -329,6 +349,16 @@ function updateVoteWidgets(id, myVote, score) {
   }
 }
 
+function updateExpiredTags(id, expired) {
+  for (const w of $$(`.vote[data-vote-for="${id}"]`)) {
+    const card = w.closest('.card');
+    if (!card) continue;
+    card.classList.toggle('is-expired', expired);
+    $('.expired-tag', card)?.remove();
+    if (expired) $('.card-media', card).insertAdjacentHTML('beforeend', '<span class="removed-tag expired-tag">Expired</span>');
+  }
+}
+
 // ============================================================ global actions (event delegation)
 
 const actions = {
@@ -338,12 +368,25 @@ const actions = {
     const widget = btn.closest('.vote');
     const clicked = Number(btn.dataset.value);
     const value = Number(widget.dataset.my) === clicked ? 0 : clicked; // same vote again clears it (§11)
+    const reason = value === -1 ? await askDownvoteReason() : null;
+    if (value === -1 && !reason) return;
     try {
-      const r = await api(`/api/deals/${id}/vote`, { method: 'POST', body: { value } });
+      const r = await api(`/api/deals/${id}/vote`, { method: 'POST', body: { value, reason } });
       updateVoteWidgets(id, r.myVote, r.score);
-      track('vote', { deal_id: id, value: value === 1 ? 'up' : value === -1 ? 'down' : 'clear' });
+      updateExpiredTags(id, r.expired);
+      track('vote', { deal_id: id, value: value === 1 ? 'up' : value === -1 ? 'down' : 'clear', reason: reason || undefined });
+      if (reason === 'expired') toast('Marked as expired. Thanks!');
+      if (widget.closest('.detail')) renderRoute(); // the banner and buttons depend on the vote
     } catch (err) {
       if (err.status === 401) return goLogin();
+      toast(err.message, 'error');
+    }
+  },
+  async setExpired(btn) {
+    try {
+      await api(`/api/deals/${btn.dataset.id}/expired`, { method: 'POST', body: { expired: btn.dataset.value === '1' } });
+      renderRoute();
+    } catch (err) {
       toast(err.message, 'error');
     }
   },
@@ -903,6 +946,10 @@ async function detailPage({ params, alive }) {
     d.title,
     html`
       ${removed ? html`<div class="banner removed">This deal was removed by a moderator and is only visible to moderators.</div>` : ''}
+      ${d.expired && !removed
+        ? html`<div class="banner expired">This deal has been marked as expired, so this price may no longer be available.
+            ${d.canExpire ? html`<button class="linkish" data-action="setExpired" data-id="${d.id}" data-value="0">It's still live</button>` : ''}</div>`
+        : ''}
       <nav class="breadcrumbs" aria-label="Breadcrumb"><ol>
         <li><a href="/">Home</a></li>
         ${d.category ? html`<li><a href="/c/${d.category.slug}">${d.category.name}</a></li>` : html`<li><a href="/deals">All deals</a></li>`}
@@ -929,6 +976,7 @@ async function detailPage({ params, alive }) {
             <button class="btn" data-action="share" data-id="${d.id}" data-title="${d.title}">↗ Share</button>
             ${state.user && !removed && state.user.id !== d.poster.id ? html`<button class="btn" data-action="report" data-type="deal" data-id="${d.id}">⚑ Report</button>` : ''}
             ${d.canEdit ? html`<a class="btn" href="/deals/${d.id}/edit">✎ Edit</a>` : ''}
+            ${d.canExpire && !d.expired ? html`<button class="btn" data-action="setExpired" data-id="${d.id}" data-value="1">Mark as expired</button>` : ''}
             ${isMod() ? html`<a class="btn" href="/admin/deals?q=${encodeURIComponent(d.title.slice(0, 40))}">Moderate</a>` : ''}
           </div>
           ${storeList(d, removed)}
@@ -937,6 +985,7 @@ async function detailPage({ params, alive }) {
             : ''}
           <p class="meta-line">Posted by <strong>@${d.poster.handle}</strong> · <span title="${fullDate(d.createdAt)}">${timeAgo(d.createdAt)}</span>
             · ${d.upvotes} up / ${d.downvotes} down
+            ${d.priceHighVotes ? html` · ${d.priceHighVotes} said the price is high` : ''}
             ${state.user && d.poster.id && state.user.id !== d.poster.id && !d.posterBlocked && !/^deleted_/.test(d.poster.handle || '')
               ? html` · <button class="linkish" data-action="block" data-user-id="${d.poster.id}" data-handle="${d.poster.handle}">Block @${d.poster.handle}</button>`
               : ''}</p>

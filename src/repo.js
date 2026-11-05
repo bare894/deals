@@ -61,6 +61,7 @@ export function createRepo(db, { amazonTag = null } = {}) {
       downvotes: row.downvotes,
       commentCount: row.comment_count ?? 0,
       status: row.status,
+      expired: Boolean(row.expired_at),
       createdAt: row.created_at,
       poster: { id: row.submitted_by, handle: row.poster_handle },
     };
@@ -138,7 +139,7 @@ export function createRepo(db, { amazonTag = null } = {}) {
     const offset = (page - 1) * limit;
     let rows;
     if (sort === 'hot') {
-      const all = await db.all(`${DEAL_SELECT} WHERE ${where.join(' AND ')} ORDER BY d.created_at DESC LIMIT 2000`, ...params);
+      const all = await db.all(`${DEAL_SELECT} WHERE ${where.join(' AND ')} AND d.expired_at IS NULL ORDER BY d.created_at DESC LIMIT 2000`, ...params);
       rows = rankHot(all).slice(offset, offset + limit + 1);
     } else {
       rows = await db.all(`${DEAL_SELECT} WHERE ${where.join(' AND ')} ORDER BY d.created_at DESC, d.id DESC LIMIT ? OFFSET ?`, ...params, limit + 1, offset);
@@ -157,7 +158,7 @@ export function createRepo(db, { amazonTag = null } = {}) {
     const words = (t) => new Set(String(t).toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 2 && !SIMILAR_STOPWORDS.has(w)));
     const mine = words(base.title);
     const rows = await db.all(
-      `${DEAL_SELECT} WHERE d.status = 'active' AND d.id <> ? ${base.category_id ? 'AND d.category_id = ?' : ''} ORDER BY d.created_at DESC LIMIT 300`,
+      `${DEAL_SELECT} WHERE d.status = 'active' AND d.expired_at IS NULL AND d.id <> ? ${base.category_id ? 'AND d.category_id = ?' : ''} ORDER BY d.created_at DESC LIMIT 300`,
       dealId, ...(base.category_id ? [base.category_id] : []),
     );
     return rows
@@ -169,11 +170,11 @@ export function createRepo(db, { amazonTag = null } = {}) {
   }
 
   async function latest(limit) {
-    return (await db.all(`${DEAL_SELECT} WHERE d.status = 'active' ORDER BY d.created_at DESC LIMIT ?`, limit)).map((r) => serializeDeal(r));
+    return (await db.all(`${DEAL_SELECT} WHERE d.status = 'active' AND d.expired_at IS NULL ORDER BY d.created_at DESC LIMIT ?`, limit)).map((r) => serializeDeal(r));
   }
 
   async function hotSlice(limit) {
-    const rows = await db.all(`${DEAL_SELECT} WHERE d.status = 'active' AND d.created_at > ? AND d.score > 0 ORDER BY d.created_at DESC LIMIT 2000`, Date.now() - HOT_WINDOW_MS);
+    const rows = await db.all(`${DEAL_SELECT} WHERE d.status = 'active' AND d.expired_at IS NULL AND d.created_at > ? AND d.score > 0 ORDER BY d.created_at DESC LIMIT 2000`, Date.now() - HOT_WINDOW_MS);
     return rankHot(rows).slice(0, limit).map((r) => serializeDeal(r));
   }
 
@@ -204,7 +205,7 @@ export function createRepo(db, { amazonTag = null } = {}) {
     if (!hasInterests(profile)) return { personalized: false, items: await hotSlice(limit) };
     const candidates = await db.all(
         `${DEAL_SELECT}
-          WHERE d.status = 'active' AND d.created_at > ? AND d.submitted_by != ?
+          WHERE d.status = 'active' AND d.expired_at IS NULL AND d.created_at > ? AND d.submitted_by != ?
             AND NOT EXISTS (SELECT 1 FROM votes v WHERE v.deal_id = d.id AND v.user_id = ?)
             AND NOT EXISTS (SELECT 1 FROM bookmarks b WHERE b.deal_id = d.id AND b.user_id = ?)
           ORDER BY d.created_at DESC LIMIT 1000`,

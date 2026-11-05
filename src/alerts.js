@@ -87,7 +87,7 @@ export async function runAlertJob({ db, repo, push, log = console, now = Date.no
     const blocks = new Set((await db.all('SELECT blocker_id, blocked_id FROM user_blocks')).map((b) => `${b.blocker_id}:${b.blocked_id}`));
     result.alerts = alerts.length;
     if (!alerts.length) return;
-    const deals = await db.all(`${repo.DEAL_SELECT} WHERE d.status = 'active' AND d.created_at > ? ORDER BY d.created_at DESC LIMIT 2000`, now - LOOKBACK_MS);
+    const deals = await db.all(`${repo.DEAL_SELECT} WHERE d.status = 'active' AND d.expired_at IS NULL AND d.created_at > ? ORDER BY d.created_at DESC LIMIT 2000`, now - LOOKBACK_MS);
     const perUser = new Map(); // user id → [{ alert, deal }]
     for (const a of alerts) {
       const words = phraseWords(a.phrase);

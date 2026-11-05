@@ -290,7 +290,11 @@ Available to any signed-in user on the website, the Android app, and via the ext
 - Net score drives Hot (§6).
 - **Self-votes are blocked**; vote buttons are disabled on your own deals.
 
-**Planned: downvote reasons.** Ask why on downvote, with four choices: *Expired / can't get this price* (auto-expires the deal after several reports), *Not a good deal* (ranking only), *Wrong info* (flags for correction), *Spam or repost* (goes to the moderation queue). Details in [PROJECT_NOTES.md §14](PROJECT_NOTES.md).
+**Downvote reasons (built).** A downvote asks why: *Deal expired* or *Price is high*.
+- *Deal expired* marks the deal expired (`EXPIRE_VOTES`, currently 1 vote). It stays reachable and tagged "Expired" in All deals, but leaves the home page, Hot, For You, similar deals and alerts. Taking the vote back undoes it. The poster or a moderator can also mark it expired or bring it back.
+- *Price is high* is a normal downvote, counted on the deal page.
+
+**Planned:** *Wrong info* and *Spam or repost* reasons. Details in [PROJECT_NOTES.md §14](PROJECT_NOTES.md).
 
 ## 12. Comments
 
@@ -367,7 +371,7 @@ Available to any signed-in user on the website, the Android app, and via the ext
 | **User** | id, email, handle, role (user/moderator/admin), status (active/suspended/banned/deleted), password hash (optional for social-only accounts), created_at |
 | **OAuthIdentity** *(new)* | provider (google/facebook), provider user ID, user_id |
 | **Session** | token hash, user_id, expires_at |
-| **Deal** | id, submitted_by, title, image_url, category_id, details, gtin, mpn, status (active/removed), merged_into, upvotes, downvotes, score, best_price, best_full_price, best_store, offer_count, timestamps |
+| **Deal** | id, submitted_by, title, image_url, category_id, details, gtin, mpn, status (active/removed), expired_at, expired_by, merged_into, upvotes, downvotes, score, best_price, best_full_price, best_store, offer_count, timestamps |
 | **Offer** *(new)* | id, deal_id, submitted_by, store, source_url (as posted), canonical_url, canonical_url_hash (unique while active), price, full_price (MRP), note, status (active/removed/deal_removed) |
 | **Vote** | deal_id, user_id, value (+1/−1); unique on (deal_id, user_id) |
 | **Comment** | id, deal_id, user_id, body, status (visible/removed), created_at |
@@ -431,7 +435,7 @@ Prices are stored as integer paise; timestamps as epoch milliseconds. Schema cha
 ## 18. Out of Scope (v1)
 
 - A separate native or standalone app for Admins/Moderators.
-- **Price-drop alerts** and automated expiry detection. *(Alerts for **new** deals are now in scope, §13a. Automated expiry from user downvotes is planned, §11.)*
+- **Price-drop alerts** and automated expiry detection. *(Alerts for **new** deals are now in scope, §13a. Expiry from user downvotes is built, §11.)*
 - Sponsored placements and display ads. *(Amazon affiliate links are now built, §9.5; other stores' affiliate programs are planned.)*
 - Threaded comment replies and comment upvoting.
 - Browser (web push) notifications.
@@ -442,7 +446,7 @@ Prices are stored as integer paise; timestamps as epoch milliseconds. Schema cha
 |---|---|---|
 | Store scraping is unreliable (bot checks on cloud servers, JS-rendered prices) | **High** | Manual-entry fallback (built); Amazon-specific parsing (built); extension sends the page as the user sees it (built); affiliate product APIs such as Amazon PA-API (planned). |
 | Vote manipulation (sockpuppets, brigading) | **High** | Rate limits, one vote per user, self-votes blocked (built); anomaly monitoring (planned). |
-| Spam, fake or expired deals | **Medium** | Approved stores only, report queue, moderator removal (built); downvote reasons with auto-expiry (planned). |
+| Spam, fake or expired deals | **Medium** | Approved stores only, report queue, moderator removal (built); downvote reasons with expiry (built, §11). |
 | Dedup bypassed via shortened or parameterized URLs | **Medium** | Product-ID canonicalization, short-link resolution, cross-store matching and merge (built). |
 | Public comments enable harassment | **Medium** | Report and remove tooling, rate limits, audit log (built). |
 | iOS and Android drift apart | **Low** | Both run the same website in a Capacitor shell, so features stay in parity. |
@@ -469,7 +473,7 @@ Prices are stored as integer paise; timestamps as epoch milliseconds. Schema cha
 | 13 | Extension browsers | Chrome and Edge; Firefox and store listings planned. |
 
 **New open questions**
-1. How many "Expired" downvote reasons should auto-expire a deal, and should they count against the poster? (§11)
+1. How many "Deal expired" downvotes should expire a deal (currently 1), and should they count against the poster? (§11)
 2. When to list the extension in the Chrome Web Store / Edge Add-ons.
 3. Which affiliate programs to use for Flipkart, Myntra and the other stores (direct programs or an aggregator such as Cuelinks)?
 
@@ -483,7 +487,7 @@ Prices are stored as integer paise; timestamps as epoch milliseconds. Schema cha
 | **Phase 4: Native Apps** | iOS and Android apps | **Android built, not yet live** (needs device testing, Firebase setup and Play publishing); **iOS planned** |
 | **Phase 5: Browser Extension** | One-click submission | **Done** (unpacked), plus listing-page quick posting; store listing planned |
 | **Phase 6: Engagement** *(new)* | Alerts and push notifications | **Built, not yet live** |
-| **Next (planned)** | Downvote reasons with auto-expiry; email verification; GA events for social sign-in; iOS app; extension in Chrome Web Store; shared rate-limit store | **Planned** |
+| **Next (planned)** | More downvote reasons; email verification; GA events for social sign-in; iOS app; extension in Chrome Web Store; shared rate-limit store | **Planned** |
 
 **Before production launch:** legal review of privacy policy and terms; Google consent screen in production and Facebook app Live; `ANDROID_CERT_SHA256` set after Play App Signing; Firebase configured for push.
 

@@ -227,7 +227,7 @@ export function createSeo({ db, repo }) {
           url,
           price: o.price.toFixed(2),
           priceCurrency: 'INR',
-          availability: 'https://schema.org/InStock',
+          availability: d.expired ? 'https://schema.org/SoldOut' : 'https://schema.org/InStock',
           itemCondition: 'https://schema.org/NewCondition',
           seller: { '@type': 'Organization', name: o.store },
         })),

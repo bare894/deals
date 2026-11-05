@@ -3,7 +3,7 @@ import { tx } from '../db.js';
 import { HttpError, intParam, str } from '../http.js';
 import { duplicateLinkError, storeConflictError } from '../repo.js';
 import { extractDealFields } from '../scrape.js';
-import { REPORT_REASONS, isMod, resolveLink, validateDealBody, validateOfferBody } from './common.js';
+import { DOWNVOTE_REASONS, EXPIRE_VOTES, REPORT_REASONS, isMod, resolveLink, validateDealBody, validateOfferBody } from './common.js';
 
 export function registerDealRoutes({ route, db, repo, seo, push, rateLimit, scraper, resolveUrl, approvedStores, blocklist }) {
   // ------------------------------------------------------------ discovery (§6, §7)
@@ -114,6 +114,8 @@ export function registerDealRoutes({ route, db, repo, seo, push, rateLimit, scra
     deal.myVote = 0;
     deal.bookmarked = false;
     deal.canEdit = Boolean(user && user.id === row.submitted_by && row.status === 'active');
+    deal.canExpire = Boolean(user && (user.id === row.submitted_by || isMod(user)) && row.status === 'active');
+    deal.priceHighVotes = (await db.get("SELECT COUNT(*) AS n FROM votes WHERE deal_id = ? AND reason = 'price_high'", row.id)).n;
     deal.posterBlocked = Boolean(user && (await db.get('SELECT 1 FROM user_blocks WHERE blocker_id = ? AND blocked_id = ?', user.id, row.submitted_by)));
     if (user) {
       deal.myVote = (await db.get('SELECT value FROM votes WHERE deal_id = ? AND user_id = ?', row.id, user.id))?.value || 0;
@@ -221,6 +223,8 @@ export function registerDealRoutes({ route, db, repo, seo, push, rateLimit, scra
     rateLimit('vote', user.id);
     const value = Number(body.value);
     if (![1, -1, 0].includes(value)) throw new HttpError(400, 'Vote must be 1, -1, or 0');
+    const reason = value === -1 && body.reason != null ? String(body.reason) : null;
+    if (reason && !DOWNVOTE_REASONS.includes(reason)) throw new HttpError(400, 'Invalid downvote reason');
     const dealId = Number(params.id);
     return tx(db, async () => {
       // Row lock: concurrent votes on one deal take turns, so the counters stay exact.
@@ -228,20 +232,46 @@ export function registerDealRoutes({ route, db, repo, seo, push, rateLimit, scra
       if (!deal || deal.status !== 'active') throw new HttpError(404, 'Deal not found');
       // Self-votes excluded to reduce gaming (PRD §11 recommendation, Open Q #6).
       if (deal.submitted_by === user.id) throw new HttpError(403, "You can't vote on your own deal");
-      const prev = (await db.get('SELECT value FROM votes WHERE deal_id = ? AND user_id = ?', dealId, user.id))?.value || 0;
-      if (prev !== value) {
+      const before = await db.get('SELECT value, reason FROM votes WHERE deal_id = ? AND user_id = ?', dealId, user.id);
+      const prev = before?.value || 0;
+      const prevReason = before?.reason || null;
+      if (prev !== value || prevReason !== reason) {
         if (value === 0) await db.run('DELETE FROM votes WHERE deal_id = ? AND user_id = ?', dealId, user.id);
         else
           await db.run(
-            'INSERT INTO votes (deal_id, user_id, value, created_at) VALUES (?, ?, ?, ?) ON CONFLICT (deal_id, user_id) DO UPDATE SET value = excluded.value',
-            dealId, user.id, value, Date.now(),
+            'INSERT INTO votes (deal_id, user_id, value, reason, created_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT (deal_id, user_id) DO UPDATE SET value = excluded.value, reason = excluded.reason',
+            dealId, user.id, value, reason, Date.now(),
           );
         const up = (value === 1 ? 1 : 0) - (prev === 1 ? 1 : 0);
         const down = (value === -1 ? 1 : 0) - (prev === -1 ? 1 : 0);
         await db.run('UPDATE deals SET upvotes = upvotes + ?, downvotes = downvotes + ?, score = score + ? WHERE id = ?', up, down, up - down, dealId);
+        if (reason === 'expired' || prevReason === 'expired') {
+          const { n } = await db.get("SELECT COUNT(*) AS n FROM votes WHERE deal_id = ? AND reason = 'expired'", dealId);
+          if (Number(n) >= EXPIRE_VOTES) await db.run('UPDATE deals SET expired_at = COALESCE(expired_at, ?) WHERE id = ?', Date.now(), dealId);
+          // Votes took the mark back; one the poster or a moderator set by hand stays.
+          else await db.run('UPDATE deals SET expired_at = NULL WHERE id = ? AND expired_by IS NULL', dealId);
+        }
       }
-      const d = await db.get('SELECT upvotes, downvotes, score FROM deals WHERE id = ?', dealId);
-      return { myVote: value, score: d.score, upvotes: d.upvotes, downvotes: d.downvotes };
+      const d = await db.get('SELECT upvotes, downvotes, score, expired_at FROM deals WHERE id = ?', dealId);
+      return { myVote: value, score: d.score, upvotes: d.upvotes, downvotes: d.downvotes, expired: Boolean(d.expired_at) };
+    });
+  });
+
+  // The poster or a moderator can mark a deal expired, or bring it back if it's still live.
+  route('POST', '/api/deals/:id/expired', { auth: true, active: true }, async ({ params, body, user }) => {
+    const dealId = Number(params.id);
+    const expired = Boolean(body.expired);
+    return tx(db, async () => {
+      const deal = await db.get('SELECT id, submitted_by, status FROM deals WHERE id = ? FOR UPDATE', dealId);
+      if (!deal || deal.status !== 'active') throw new HttpError(404, 'Deal not found');
+      if (deal.submitted_by !== user.id && !isMod(user)) throw new HttpError(403, 'Only the poster or a moderator can do this');
+      if (expired) await db.run('UPDATE deals SET expired_at = COALESCE(expired_at, ?), expired_by = ? WHERE id = ?', Date.now(), user.id, dealId);
+      else {
+        await db.run('UPDATE deals SET expired_at = NULL, expired_by = NULL WHERE id = ?', dealId);
+        // Earlier "Deal expired" votes stay downvotes but no longer count towards expiring it.
+        await db.run("UPDATE votes SET reason = NULL WHERE deal_id = ? AND reason = 'expired'", dealId);
+      }
+      return { expired };
     });
   });
 

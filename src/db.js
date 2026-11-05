@@ -376,6 +376,14 @@ ALTER TABLE moderation_actions DROP CONSTRAINT moderation_actions_target_type_ch
 ALTER TABLE moderation_actions ADD CONSTRAINT moderation_actions_target_type_check
   CHECK (target_type IN ('deal','comment','offer','user','category','blocked_term'));
 `,
+  // 10: why someone downvoted ("Deal expired" / "Price is high"), and expired deals. An expired deal
+  //     stays active and visible, tagged, but leaves the home page, Hot, For You and alerts.
+  //     expired_by is set when the poster or a moderator marked it by hand, NULL when votes did.
+  `
+ALTER TABLE votes ADD COLUMN reason TEXT CHECK (reason IN ('expired','price_high'));
+ALTER TABLE deals ADD COLUMN expired_at BIGINT;
+ALTER TABLE deals ADD COLUMN expired_by INTEGER REFERENCES users(id) ON DELETE SET NULL;
+`,
 ];
 
 const TABLES = ['blocked_terms', 'user_blocks', 'alert_hits', 'alerts', 'push_log', 'push_tokens', 'page_views', 'password_resets', 'feedback', 'app_login_codes', 'moderation_actions', 'reports', 'views', 'bookmarks', 'comments', 'votes', 'offers', 'deals', 'categories', 'sessions', 'oauth_identities', 'users', 'schema_migrations'];

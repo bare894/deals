@@ -246,10 +246,12 @@ npm run make-admin -- --email you@example.com --handle yourname [--password '…
 
 ## 14. Roadmap (planned, not built)
 
-### Downvote reasons
+### More downvote reasons
 *Added 2026-11-03. Inspired by Slickdeals' "Why are you downvoting this deal?" prompt.*
 
-When someone downvotes, ask why, with one tap and four choices:
+**Built so far (migration 10):** a downvote asks "Deal expired" or "Price is high", stored in `votes.reason`. `EXPIRE_VOTES` in `src/routes/common.js` is how many "Deal expired" votes mark a deal expired (currently 1). An expired deal keeps `status = 'active'` with `deals.expired_at` set: its page and All deals still show it, tagged, but it leaves the home page, Hot, For You, similar deals and alerts. The poster or a moderator can mark it expired or bring it back.
+
+The original idea, for what's left to build (four choices):
 
 | Choice | What it does |
 |---|---|
