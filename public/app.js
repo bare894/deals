@@ -291,6 +291,8 @@ const ICONS = {
   bell: icon('<path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/>'),
   plus: icon('<path d="M5 12h14"/><path d="M12 5v14"/>'),
   heart: icon('<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>'),
+  sun: icon('<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>'),
+  moon: icon('<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>'),
   flame: icon('<path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>'),
   user: icon('<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>'),
 };
@@ -363,6 +365,8 @@ function updateExpiredTags(id, expired) {
 // ============================================================ global actions (event delegation)
 
 const actions = {
+  toggleTheme: () => setTheme(isDark() ? 'light' : 'dark'),
+  setTheme: (el) => setTheme(el.dataset.value),
   async vote(btn) {
     if (!state.user) return goLogin();
     const id = Number(btn.dataset.id);
@@ -547,16 +551,17 @@ function renderChrome() {
   const u = state.user;
   const q = new URLSearchParams(location.search).get('q') || '';
   $('#topbar').innerHTML = String(html`<div class="topbar-inner">
-    <a class="logo" href="/" aria-label="ShareDeals.in home"><picture class="logo-full"><source srcset="/img/logo-dark.webp" media="(prefers-color-scheme: dark)" type="image/webp"><source srcset="/img/logo-dark.png" media="(prefers-color-scheme: dark)"><source srcset="/img/logo.webp" type="image/webp"><img src="/img/logo.png" alt="ShareDeals.in" width="166" height="44"></picture><picture class="logo-mark"><source srcset="/img/mark-dark.webp" media="(prefers-color-scheme: dark)" type="image/webp"><source srcset="/img/mark-dark.png" media="(prefers-color-scheme: dark)"><source srcset="/img/mark.webp" type="image/webp"><img src="/img/mark.png" alt="ShareDeals.in" width="80" height="44"></picture></a>
+    <a class="logo" href="/" aria-label="ShareDeals.in home"><picture class="logo-full"><source srcset="/img/logo-dark.webp" media="${darkMedia()}" type="image/webp"><source srcset="/img/logo-dark.png" media="${darkMedia()}"><source srcset="/img/logo.webp" type="image/webp"><img src="/img/logo.png" alt="ShareDeals.in" width="166" height="44"></picture><picture class="logo-mark"><source srcset="/img/mark-dark.webp" media="${darkMedia()}" type="image/webp"><source srcset="/img/mark-dark.png" media="${darkMedia()}"><source srcset="/img/mark.webp" type="image/webp"><img src="/img/mark.png" alt="ShareDeals.in" width="80" height="44"></picture></a>
     <form class="search" id="search-form" role="search">
       <input type="search" name="q" placeholder="Search deals or stores" aria-label="Search deals" value="${q}">
     </form>
     <nav class="nav">
-      <a href="/deals?sort=hot" class="hide-sm" data-nav="/deals" data-sort="hot">Hot</a>
+      <a href="/deals?sort=hot" class="hide-sm" data-nav="/deals" data-sort="hot">Popular</a>
       <a href="/deals" class="hide-sm" data-nav="/deals" data-sort="new">All deals</a>
       ${u ? html`<a href="/saved" class="hide-sm" data-nav="/saved">Saved</a><a href="/alerts" class="hide-sm" data-nav="/alerts">Alerts</a>` : ''}
       ${isMod() ? html`<a href="/admin" class="hide-sm" data-nav="/admin">Admin</a>` : ''}
       <a href="/submit" class="btn btn-primary btn-sm hide-sm">+ Post a deal</a>
+      <button class="linkish theme-btn" data-action="toggleTheme" aria-label="Switch theme"><span class="ico-moon">${ICONS.moon}</span><span class="ico-sun">${ICONS.sun}</span></button>
       ${
         u
           ? html`<span class="user-chip"><a href="/account" class="avatar" title="Your account (@${u.handle})" aria-label="Your account">${u.handle[0]}</a>
@@ -578,6 +583,7 @@ function renderChrome() {
     navigate(val ? `/deals?q=${encodeURIComponent(val)}` : '/deals');
   });
   markActiveNav();
+  applyTheme();
 }
 
 function markActiveNav() {
@@ -624,6 +630,55 @@ const nativeCall = (plugin, method, options = {}) => native.nativePromise(plugin
 const nativeListen = (plugin, eventName, cb) => native.nativeCallback(plugin, 'addListener', { eventName }, cb);
 const APP_SCHEME = 'in.sharedeals.app';
 const CONTACT_EMAIL = 'info@sharedeals.in';
+
+// ------------------------------------------------------------ colour theme
+// 'system' follows the device; 'light' / 'dark' are the user's choice, saved in this browser (or the
+// app's WebView) and applied before paint by /theme.js. In the Android app the native AppTheme
+// plugin (mobile/android/.../ThemePlugin.java) is told too, so the status bar, splash screen and
+// offline page match. Google Analytics: theme_change.
+
+const systemDark = window.matchMedia('(prefers-color-scheme: dark)');
+function getTheme() {
+  try {
+    const t = localStorage.getItem('theme');
+    return t === 'light' || t === 'dark' ? t : 'system';
+  } catch {
+    return 'system';
+  }
+}
+const isDark = () => (getTheme() === 'system' ? systemDark.matches : getTheme() === 'dark');
+/** media for the dark logo <source>s: the device query when following it, else always / never. */
+const darkMedia = () => ({ system: '(prefers-color-scheme: dark)', dark: 'all', light: 'not all' })[getTheme()];
+
+function applyTheme() {
+  const t = getTheme();
+  const root = document.documentElement;
+  if (t === 'system') delete root.dataset.theme;
+  else root.dataset.theme = t;
+  root.classList.toggle('is-dark', isDark());
+  for (const s of $$('.logo source[media]')) s.media = darkMedia();
+  for (const b of $$('[data-action="setTheme"]')) b.setAttribute('aria-pressed', String(b.dataset.value === t));
+  const btn = $('.theme-btn');
+  if (btn) {
+    const label = isDark() ? 'Switch to light mode' : 'Switch to dark mode';
+    btn.setAttribute('aria-label', label);
+    btn.title = label;
+  }
+  if (native?.isPluginAvailable?.('AppTheme')) nativeCall('AppTheme', 'set', { mode: t }).catch(() => {});
+}
+
+function setTheme(t) {
+  try {
+    if (t === 'system') localStorage.removeItem('theme');
+    else localStorage.setItem('theme', t);
+  } catch {
+    /* storage blocked: applies for this visit only */
+    if (t !== 'system') document.documentElement.dataset.theme = t;
+  }
+  applyTheme();
+  track('theme_change', { theme: t });
+}
+systemDark.addEventListener?.('change', applyTheme);
 
 const b64url = (bytes) => btoa(String.fromCharCode(...new Uint8Array(bytes))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 
@@ -1623,6 +1678,12 @@ async function accountPage() {
         <a class="btn" href="/saved?tab=posts">My posts</a>
         <button class="btn" data-action="logout">Sign out</button>
       </p>
+      <h2 style="font-size:18px">Appearance</h2>
+      <div class="segmented" role="group" aria-label="Theme">${['system', 'light', 'dark'].map(
+        (t) => html`<button type="button" data-action="setTheme" data-value="${t}" aria-pressed="${String(getTheme() === t)}">${t === 'system' ? 'System' : t === 'light' ? 'Light' : 'Dark'}</button>`,
+      )}</div>
+      <p class="muted small">System matches your device's light or dark setting.</p>
+      <hr style="border:0;border-top:1px solid var(--border);margin:24px 0">
       <p class="muted small"><a href="/feedback">Send feedback</a> · <a href="/privacy">Privacy Policy</a> · <a href="/terms">Terms</a> · <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
       <hr style="border:0;border-top:1px solid var(--border);margin:24px 0">
       <h2 style="font-size:18px">Blocked users</h2>

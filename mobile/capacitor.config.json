@@ -10,8 +10,5 @@
       "www.sharedeals.in",
       "deals-production-1ecf.up.railway.app"
     ]
-  },
-  "android": {
-    "backgroundColor": "#ffffff"
   }
 }

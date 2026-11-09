@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Dark mode: the splash background matches the site's dark --bg (public/styles.css). -->
+<resources>
+    <color name="splashBackground">#141413</color>
+</resources>
