@@ -120,7 +120,7 @@ export function dealCard(d, { hot = false, extra = '' } = {}) {
     <div class="card-media">
       <img src="${d.imageUrl || placeholder(d.title)}" data-label="${d.title.slice(0, 20)}" alt="" loading="lazy">
       ${d.discountPct ? html`<span class="pill-off">−${d.discountPct}%</span>` : ''}
-      ${hot && d.score >= 20 ? html`<span class="pill-hot">🔥 Hot</span>` : ''}
+      ${hot && d.score >= 20 ? html`<span class="pill-hot">Popular</span>` : ''}
       ${removed ? html`<span class="removed-tag">No longer available</span>` : ''}
     </div>
     <div class="card-body">

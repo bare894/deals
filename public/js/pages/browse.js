@@ -23,7 +23,7 @@ export async function homePage({ alive }) {
         ${state.categories.map((c) => html`<a class="chip" href="/deals?category=${c.slug}">${c.name}</a>`)}
       </nav>
       ${section('Latest', 'Fresh from the community', data.latest, '/deals')}
-      ${section('🔥 Hot Deals', 'Most upvoted right now', data.hot, '/deals?sort=hot', { hot: true })}
+      ${section('Popular', 'Most upvoted right now', data.hot, '/deals?sort=hot', { hot: true })}
       ${section('For You', fySub, data.forYou, null)}
     `,
   );
@@ -40,7 +40,7 @@ export async function listingsPage({ query, alive }) {
     const s = p.toString();
     return `/deals${s ? `?${s}` : ''}`;
   };
-  const heading = q ? `Results for “${q}”` : cat ? cat.name : sort === 'hot' ? 'Hot Deals' : 'All deals';
+  const heading = q ? `Results for “${q}”` : cat ? cat.name : sort === 'hot' ? 'Popular deals' : 'All deals';
   setPage(
     heading,
     html`
@@ -48,7 +48,7 @@ export async function listingsPage({ query, alive }) {
         <div><h1>${heading}</h1>${q ? html`<a class="small muted" href="${link({ q: '' })}">Clear search</a>` : ''}</div>
         <nav class="tabs" style="border:0;margin:0" aria-label="Sort">
           <a href="${link({ sort: '' })}" class="${sort === 'new' ? 'active' : ''}">Newest</a>
-          <a href="${link({ sort: 'hot' })}" class="${sort === 'hot' ? 'active' : ''}">🔥 Hot</a>
+          <a href="${link({ sort: 'hot' })}" class="${sort === 'hot' ? 'active' : ''}">Popular</a>
         </nav>
       </div>
       <nav class="chips" aria-label="Categories">

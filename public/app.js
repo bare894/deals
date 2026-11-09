@@ -291,6 +291,7 @@ const ICONS = {
   bell: icon('<path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/>'),
   plus: icon('<path d="M5 12h14"/><path d="M12 5v14"/>'),
   heart: icon('<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>'),
+  flame: icon('<path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>'),
   user: icon('<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>'),
 };
 
@@ -313,7 +314,7 @@ function dealCard(d, { hot = false, extra = '', priority = false } = {}) {
     <div class="card-media">
       <img ${productImg(d.imageUrl, 300, d.store, { priority })} data-label="${d.store}" alt="">
       ${d.discountPct ? html`<span class="pill-off">−${d.discountPct}%</span>` : ''}
-      ${hot && d.score >= 20 ? html`<span class="pill-hot">🔥 Hot</span>` : ''}
+      ${hot && d.score >= 20 ? html`<span class="pill-hot">${ICONS.flame}Popular</span>` : ''}
       ${removed ? html`<span class="removed-tag">No longer available</span>` : ''}
       ${expired ? html`<span class="removed-tag expired-tag">Expired</span>` : ''}
     </div>
@@ -834,8 +835,8 @@ async function homePage({ alive }) {
             ${data.latest.length ? html`<div class="load-more"><a class="btn" href="/deals">See all deals →</a></div>` : ''}
           </section>
         </div>
-        <aside class="home-hot section" aria-label="Hot deals">
-          <div class="section-head"><h2>🔥 Hot Deals</h2><a class="see-all" href="/deals?sort=hot">See all →</a></div>
+        <aside class="home-hot section" aria-label="Popular deals">
+          <div class="section-head"><h2 class="h-icon">${ICONS.flame}Popular</h2><a class="see-all" href="/deals?sort=hot">See all →</a></div>
           <div class="hot-box">
           <p class="muted small hot-sub">Most upvoted right now</p>
           ${data.hot.length
@@ -872,7 +873,7 @@ async function listingsPage({ query, alive, categorySlug = '', storeSlug = '' })
     const base = storeSlug && !('category' in patch) ? `/store/${storeSlug}` : next.category ? `/c/${next.category}` : '/deals';
     return `${base}${s ? `?${s}` : ''}`;
   };
-  const heading = q ? `Results for “${q}”` : store ? `${store.name} deals` : cat ? `${cat.name} deals` : sort === 'hot' ? 'Hot Deals' : 'All deals';
+  const heading = q ? `Results for “${q}”` : store ? `${store.name} deals` : cat ? `${cat.name} deals` : sort === 'hot' ? 'Popular deals' : 'All deals';
   setPage(
     heading,
     html`
@@ -880,7 +881,7 @@ async function listingsPage({ query, alive, categorySlug = '', storeSlug = '' })
         <div><h1>${heading}</h1>${q ? html`<a class="small muted" href="${link({ q: '' })}">Clear search</a> · <button class="linkish small alert-me" id="alert-from-search">${ICONS.bell}Alert me about “${q}”</button>` : ''}</div>
         <nav class="tabs" style="border:0;margin:0" aria-label="Sort">
           <a href="${link({ sort: '' })}" class="${sort === 'new' ? 'active' : ''}">Newest</a>
-          <a href="${link({ sort: 'hot' })}" class="${sort === 'hot' ? 'active' : ''}">🔥 Hot</a>
+          <a href="${link({ sort: 'hot' })}" class="${sort === 'hot' ? 'active' : ''} tab-icon">${ICONS.flame}Popular</a>
         </nav>
       </div>
       <nav class="chips" aria-label="Categories">

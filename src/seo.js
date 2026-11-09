@@ -165,7 +165,7 @@ export function createSeo({ db, repo }) {
       const q = (query.get('q') || '').trim();
       const hot = query.get('sort') === 'hot';
       const { items } = await repo.listDeals({ sort: hot ? 'hot' : 'new', q: q.slice(0, 100) || null, limit: LIST_LIMIT });
-      const h1 = q ? `Deals matching “${q}”` : hot ? 'Hot deals in India right now' : 'All deals: latest offers in India';
+      const h1 = q ? `Deals matching “${q}”` : hot ? 'Popular deals in India right now' : 'All deals: latest offers in India';
       return {
         status: 200,
         title: `${h1} | ${SITE}`,

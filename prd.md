@@ -140,7 +140,7 @@ Three roles. Permissions are enforced **server-side** on every mutating endpoint
 | US-3 | Signed-in user | comment on a deal | I can ask questions or share experience | Built |
 | US-4 | Signed-in user | bookmark a deal to my wishlist | I can find it again later | Built |
 | US-5 | User | share a deal link outside the app | I can tell friends/family | Built |
-| US-6 | User | see a "Hot Deals" section ranked by upvotes | I can find the most community-validated deals | Built |
+| US-6 | User | see a "Popular" section ranked by upvotes | I can find the most community-validated deals | Built |
 | US-7 | User | see a "For You" section | I see deals relevant to my interests | Built |
 | US-8 | Signed-in user | submit a deal by pasting a URL | I don't have to manually fill every field | Built |
 | US-9 | Signed-in user | edit auto-populated fields before posting | I can correct inaccurate scraped data | Built |
@@ -164,9 +164,9 @@ Three roles. Permissions are enforced **server-side** on every mutating endpoint
 
 | Section | Sort basis | Built as |
 |---|---|---|
-| **For You** | Personalization | Shown first, **only to signed-in users**. Signals and weights in the table below. Users with no history see Hot deals, labelled "Trending". |
+| **For You** | Personalization | Shown first, **only to signed-in users**. Signals and weights in the table below. Users with no history see Popular deals, labelled "Trending". |
 | **Latest** | `created_at` descending | Up to 100 deals, with a "See all" link to Listings. Leads the page for signed-out visitors. |
-| **Hot Deals** | Net score with time decay | `score / (age_hours + 2)^1.5` over a 14-day window (Hacker-News style). Shown in a right-hand column on desktop. |
+| **Popular** | Net score with time decay | `score / (age_hours + 2)^1.5` over a 14-day window (Hacker-News style). Shown in a right-hand column on desktop. |
 
 **For You signals (built):**
 

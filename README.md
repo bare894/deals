@@ -32,7 +32,7 @@ Env vars: `PORT` (3000), `DATABASE_URL` (Postgres; unset = local PGlite), `PG_PO
 
 | PRD | Feature | Notes |
 |---|---|---|
-| §6 | Homepage: Latest / 🔥 Hot / For You | Each section is its own horizontal scroller. Deal cards support inline voting. |
+| §6 | Homepage: Latest / Popular / For You | Each section is its own horizontal scroller. Deal cards support inline voting. |
 | §7 | Listings `/deals` | Newest or Hot sort, category chips, search, infinite scroll |
 | §8 | Deal detail `/deals/:id` | Every element 8.1–8.12 |
 | §9 | Submission `/submit` | Paste URL → dedup check → server-side auto-populate (JSON-LD `Product` + Open Graph) → review/edit → publish. Falls back to manual entry when scraping fails (§9.1) |
