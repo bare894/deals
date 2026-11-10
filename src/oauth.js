@@ -76,7 +76,7 @@ async function uniqueHandle(db, name, email) {
   return `${base}_${randomBytes(3).toString('hex')}`;
 }
 
-export function createOAuth({ db, config, secureCookies, baseUrl, rateLimit, fetchImpl = fetch }) {
+export function createOAuth({ db, config, secureCookies, baseUrl, rateLimit, fetchImpl = fetch, onSignup = async () => {} }) {
   const enabled = Object.keys(PROVIDERS).filter((p) => config[p]);
 
   async function fetchJson(url, init = {}) {
@@ -103,14 +103,16 @@ export function createOAuth({ db, config, secureCookies, baseUrl, rateLimit, fet
       return existing;
     }
     // Social-only accounts have no password; '' never verifies (see verifyPassword).
-    return db.tx(async () => {
-      const user = await db.get(
+    const user = await db.tx(async () => {
+      const row = await db.get(
         "INSERT INTO users (email, handle, password_hash, created_at) VALUES (?, ?, '', ?) RETURNING *",
         email.toLowerCase(), await uniqueHandle(db, name, email), Date.now(),
       );
-      await link(user.id);
-      return user;
+      await link(row.id);
+      return row;
     });
+    onSignup({ email: user.email, handle: user.handle, method: { google: 'Google', facebook: 'Facebook' }[provider] || provider });
+    return user;
   }
 
   /** Back to the app via its URL scheme. A page (not a bare 302), so there's a button if the tab doesn't switch by itself. */

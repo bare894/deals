@@ -13,6 +13,7 @@ let base;
 let db;
 // What the fake provider returns for the next sign-in.
 let profiles;
+const sentMail = [];
 
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 async function fakeFetch(url) {
@@ -35,6 +36,8 @@ before(async () => {
     rateLimits: false,
     oauth: { google: { clientId: 'gid', clientSecret: 'gsecret' }, facebook: { clientId: 'fid', clientSecret: 'fsecret' } },
     oauthFetch: fakeFetch,
+    mailer: { configured: true, send: async (m) => void sentMail.push(m) },
+    signupNotifyEmail: 'owner@t.test',
   });
   server = http.createServer(app);
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
@@ -163,4 +166,20 @@ test('assetlinks.json lists the app signing certificates from ANDROID_CERT_SHA25
   assert.equal(statement.target.package_name, 'in.sharedeals.app');
   assert.deepEqual(statement.target.sha256_cert_fingerprints, ['AA:BB:CC', 'DD:EE:FF']);
   delete process.env.ANDROID_CERT_SHA256;
+});
+
+test('a new Google/Facebook account emails the owner once; signing back in or linking does not', async () => {
+  const notices = () => sentMail.filter((m) => m.to === 'owner@t.test');
+  const start = notices().length;
+  profiles = { facebook: { id: 'fb-notify', email: 'fresh.face@example.com', name: 'Fresh Face' } };
+  await signIn('facebook');
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(notices().length, start + 1);
+  assert.match(notices().at(-1).text, /Email: fresh\.face@example\.com/);
+  assert.match(notices().at(-1).text, /Signed up with: Facebook/);
+  await signIn('facebook'); // same account again
+  profiles = { google: { sub: 'g-existing', email: 'existing@t.test', email_verified: true, name: 'Existing' } };
+  await signIn('google'); // links to the existing password account
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(notices().length, start + 1);
 });

@@ -45,3 +45,24 @@ export function mailerFromEnv(env = process.env, fetchImpl = fetch) {
     send: async ({ to, subject, text }) => console.log(`[mail] (not configured) to=${to} subject=${subject}\n${text}`),
   };
 }
+
+/**
+ * New-signup notice to the site owner: one email per new account (password or Google/Facebook),
+ * sent straight away. Recipient comes from SIGNUP_NOTIFY_EMAIL (kept out of the repo); unset = off.
+ * Never blocks or fails the signup itself.
+ */
+export function signupNotifier({ mailer, to = process.env.SIGNUP_NOTIFY_EMAIL, log = console } = {}) {
+  const recipient = String(to || '').trim();
+  return function notifySignup({ email, handle, method }) {
+    if (!recipient) return Promise.resolve(false);
+    const when = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'medium', timeStyle: 'short' });
+    const text = `A new user registered on ShareDeals.\n\nEmail: ${email}\nUsername: @${handle}\nSigned up with: ${method}\nTime: ${when} IST\n`;
+    return Promise.resolve()
+      .then(() => mailer.send({ to: recipient, subject: `New ShareDeals signup: ${email}`, text }))
+      .then(() => true)
+      .catch((err) => {
+        log.error(`[mail] signup notice failed: ${err.message}`);
+        return false;
+      });
+  };
+}

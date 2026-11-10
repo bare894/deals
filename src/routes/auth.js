@@ -9,7 +9,7 @@ const DELETE_PHRASE = 'DELETE MY ACCOUNT';
 const RESET_TTL_MS = 60 * 60 * 1000;
 const sha256 = (s) => createHash('sha256').update(s).digest('hex');
 
-export function registerAuthRoutes({ route, db, rateLimit, mailer, publicBase, secureCookies, oauthProviders = [], approvedStores = APPROVED_STORES }) {
+export function registerAuthRoutes({ route, db, rateLimit, mailer, notifySignup = async () => {}, publicBase, secureCookies, oauthProviders = [], approvedStores = APPROVED_STORES }) {
   route('GET', '/api/meta', async ({ user }) => ({
     user: publicUser(user),
     oauth: oauthProviders,
@@ -33,6 +33,7 @@ export function registerAuthRoutes({ route, db, rateLimit, mailer, publicBase, s
       if (isUniqueViolation(err)) throw new HttpError(409, /email/.test(err.constraint || err.message) ? 'An account with that email already exists' : 'That username is taken');
       throw err;
     }
+    notifySignup({ email, handle, method: 'email and password' });
     const { token, maxAge } = await createSession(db, id);
     setCookie(sessionCookie(token, maxAge, secureCookies));
     return { user: publicUser(await db.get('SELECT * FROM users WHERE id = ?', id)) };

@@ -8,7 +8,7 @@ import { HttpError, clientIp, createRouter, escapeHtml, makeRateLimiter, readJso
 import { createRepo } from './repo.js';
 import { createSeo } from './seo.js';
 import { INDEXNOW_KEY, createIndexNow } from './indexnow.js';
-import { mailerFromEnv } from './mailer.js';
+import { mailerFromEnv, signupNotifier } from './mailer.js';
 import { createPush } from './push.js';
 import { registerAlertRoutes, scheduleAlertJob } from './alerts.js';
 import { sizedImage } from '../public/meta.js';
@@ -82,6 +82,7 @@ export function createApp({
   // Only the live site pings search engines; tests and local runs never do.
   indexNow: indexNowEnabled = process.env.NODE_ENV === 'production',
   mailer = mailerFromEnv(),
+  signupNotifyEmail = process.env.SIGNUP_NOTIFY_EMAIL,
   pushEnv = process.env,
   pushFetch,
   // The live site sends pages requested on any other address (the *.up.railway.app domain, bare
@@ -93,12 +94,13 @@ export function createApp({
   const { route, match } = createRouter();
   const repo = createRepo(db, { amazonTag });
   const rateLimit = makeRateLimiter(RATE_LIMITS, rateLimits);
-  const oauth = createOAuth({ db, config: oauthConfig, secureCookies, baseUrl: (req) => baseUrl(req), rateLimit, fetchImpl: oauthFetch });
+  const notifySignup = signupNotifier({ mailer, to: signupNotifyEmail });
+  const oauth = createOAuth({ db, config: oauthConfig, secureCookies, baseUrl: (req) => baseUrl(req), rateLimit, fetchImpl: oauthFetch, onSignup: notifySignup });
   const seo = createSeo({ db, repo });
   const push = createPush({ db, repo, env: pushEnv, ...(pushFetch ? { fetchImpl: pushFetch } : {}) });
   const indexNow = createIndexNow({ db, baseUrl: (publicUrl || 'https://www.sharedeals.in').replace(/\/$/, ''), enabled: indexNowEnabled });
   const blocklist = createBlocklist(db);
-  const ctx = { route, db, repo, seo, push, mailer, blocklist, publicBase: () => (publicUrl || 'https://www.sharedeals.in').replace(/\/$/, ''), rateLimit, scraper, resolveUrl, secureCookies, oauthProviders: oauth.enabled, approvedStores };
+  const ctx = { route, db, repo, seo, push, mailer, notifySignup, blocklist, publicBase: () => (publicUrl || 'https://www.sharedeals.in').replace(/\/$/, ''), rateLimit, scraper, resolveUrl, secureCookies, oauthProviders: oauth.enabled, approvedStores };
   registerAuthRoutes(ctx);
   registerDealRoutes(ctx);
   registerOfferRoutes(ctx);

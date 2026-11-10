@@ -40,6 +40,7 @@ before(async () => {
     resolveUrl: async (u) => (new URL(u).hostname === 'amzn.in' ? new URL('https://www.amazon.in/Glimbo-Toaster/dp/B0SHORT123?tag=poster-21') : u),
     amazonTag: 'test-21',
     mailer: { configured: true, send: async (m) => void sentMail.push(m) },
+    signupNotifyEmail: 'owner@t.test',
     scraper: async () => ({ ok: true, reason: null, fields: { title: 'Scraped Title', imageUrl: 'https://cdn.x.com/i.jpg', price: 10, fullPrice: 20, store: 'Shop' } }),
   });
   server = http.createServer(app);
@@ -692,4 +693,21 @@ test('prohibited products are refused, and admins manage the blocked words', asy
   const ok = (await poster.post('/api/deals', dealBody('https://shop.com/kettle-blk', { title: 'Plain Steel Kettle', confirmNew: true }))).data.deal;
   assert.equal((await poster.post(`/api/deals/${ok.id}/offers`, { url: 'https://other.com/kettle', price: '10', store: 'Other', note: 'free condom with order' })).status, 400);
   assert.equal((await poster.patch(`/api/deals/${ok.id}`, { ...dealBody('https://shop.com/kettle-blk'), title: 'Kettle and Shotgun' })).status, 400);
+});
+
+test('a new password signup emails the owner straight away; a failed signup does not', async () => {
+  const before = sentMail.length;
+  const me = client();
+  assert.equal((await me.post('/api/auth/register', { email: 'Newbie@T.test', handle: 'newbie', password: 'password123' })).status, 200);
+  await new Promise((r) => setTimeout(r, 20));
+  const notices = sentMail.slice(before).filter((m) => m.to === 'owner@t.test');
+  assert.equal(notices.length, 1);
+  assert.match(notices[0].subject, /newbie@t\.test/);
+  assert.match(notices[0].text, /Email: newbie@t\.test/);
+  assert.match(notices[0].text, /@newbie/);
+  assert.match(notices[0].text, /email and password/);
+  const dup = await client().post('/api/auth/register', { email: 'newbie@t.test', handle: 'newbie2', password: 'password123' });
+  assert.equal(dup.status, 409);
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(sentMail.slice(before).filter((m) => m.to === 'owner@t.test').length, 1);
 });
