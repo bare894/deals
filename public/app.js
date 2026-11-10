@@ -293,6 +293,7 @@ const ICONS = {
   heart: icon('<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>'),
   sun: icon('<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>'),
   moon: icon('<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>'),
+  close: icon('<path d="M18 6 6 18"/><path d="m6 6 12 12"/>'),
   flame: icon('<path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>'),
   user: icon('<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>'),
 };
@@ -679,6 +680,68 @@ function setTheme(t) {
   track('theme_change', { theme: t });
 }
 systemDark.addEventListener?.('change', applyTheme);
+
+// ------------------------------------------------------------ "Get the app" banner (Android web only)
+// Shown to Android browser visitors, never inside the app itself. Hidden when Chrome reports the app
+// is installed (getInstalledRelatedApps: manifest.webmanifest related_applications + the app's
+// asset_statements) and for 14 days after it's closed. The button is an Android intent link: it
+// opens the app at this page if it's installed after all, and goes to the Play Store if not.
+// Google Analytics: app_banner_view, app_banner_click, app_banner_dismiss.
+
+const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=in.sharedeals.app';
+const APP_BANNER_KEY = 'appBannerDismissedAt';
+const APP_BANNER_SNOOZE_MS = 14 * 24 * 60 * 60 * 1000;
+
+/** Opens the app at the current deal (its App Links cover /deals…), else the Play Store. */
+function appIntentUrl(loc = location) {
+  const p = loc.pathname.startsWith('/deals') ? loc.pathname + loc.search : '/deals';
+  const fallback = `${PLAY_STORE_URL}&referrer=${encodeURIComponent('utm_source=sharedeals.in&utm_medium=web_banner')}`;
+  return `intent://www.sharedeals.in${p}#Intent;scheme=https;package=in.sharedeals.app;S.browser_fallback_url=${encodeURIComponent(fallback)};end`;
+}
+
+function appBannerSnoozed() {
+  try {
+    return Date.now() - Number(localStorage.getItem(APP_BANNER_KEY) || 0) < APP_BANNER_SNOOZE_MS;
+  } catch {
+    return false;
+  }
+}
+
+async function appInstalled() {
+  try {
+    const apps = (await navigator.getInstalledRelatedApps?.()) || [];
+    return apps.some((a) => a.id === 'in.sharedeals.app');
+  } catch {
+    return false;
+  }
+}
+
+async function initAppBanner() {
+  const el = $('#app-banner');
+  if (!el || native || !/Android/i.test(navigator.userAgent) || appBannerSnoozed() || (await appInstalled())) return;
+  el.innerHTML = String(html`<img src="/apple-touch-icon.png" alt="" width="40" height="40">
+    <div class="app-banner-text"><strong>ShareDeals app</strong><span>Instant deal alerts, faster browsing</span></div>
+    <a class="btn btn-primary btn-sm" href="${appIntentUrl()}" data-app-banner="get">Get the app</a>
+    <button type="button" class="app-banner-close" data-app-banner="close" aria-label="Close">${ICONS.close}</button>`);
+  el.hidden = false;
+  track('app_banner_view');
+  el.addEventListener('click', (e) => {
+    const t = e.target.closest('[data-app-banner]');
+    if (!t) return;
+    if (t.dataset.appBanner === 'get') {
+      t.href = appIntentUrl(); // the page may have changed since the banner was drawn
+      track('app_banner_click');
+      return;
+    }
+    try {
+      localStorage.setItem(APP_BANNER_KEY, String(Date.now()));
+    } catch {
+      /* storage blocked: hidden for this visit only */
+    }
+    el.hidden = true;
+    track('app_banner_dismiss');
+  });
+}
 
 const b64url = (bytes) => btoa(String.fromCharCode(...new Uint8Array(bytes))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 
@@ -2426,6 +2489,7 @@ async function adminAudit({ shell, query, alive }) {
   renderChrome();
   renderRoute();
   setupDealAlerts();
+  initAppBanner();
   // Opened by a link while the app wasn't running. Android keeps reporting the launch link for
   // the app's lifetime, so remember it's been handled (the sign-in hand-off reloads the page).
   if (native) {

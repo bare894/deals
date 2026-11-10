@@ -711,3 +711,11 @@ test('a new password signup emails the owner straight away; a failed signup does
   await new Promise((r) => setTimeout(r, 20));
   assert.equal(sentMail.slice(before).filter((m) => m.to === 'owner@t.test').length, 1);
 });
+
+test('the web manifest names the Android app, for the "Get the app" banner', async () => {
+  const res = await fetch(`${base}/manifest.webmanifest`);
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get('content-type'), /application\/manifest\+json/);
+  const m = await res.json();
+  assert.deepEqual(m.related_applications.map((a) => [a.platform, a.id]), [['play', 'in.sharedeals.app']]);
+});

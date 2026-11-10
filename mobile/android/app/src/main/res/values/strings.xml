@@ -4,4 +4,6 @@
     <string name="title_activity_main">ShareDeals</string>
     <string name="package_name">in.sharedeals.app</string>
     <string name="custom_url_scheme">in.sharedeals.app</string>
+    <!-- Lets www.sharedeals.in tell this app is installed (hides its "Get the app" banner). -->
+    <string name="asset_statements" translatable="false">[{\"include\": \"https://www.sharedeals.in/.well-known/assetlinks.json\"}]</string>
 </resources>
