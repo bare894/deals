@@ -117,7 +117,8 @@ export function createRepo(db, { amazonTag = null } = {}) {
   }
 
   async function listDeals({ sort = 'new', categorySlug, storeName, q, page = 1, limit = 20, user }) {
-    const where = ["d.status = 'active'"];
+    // Expired deals stay reachable by link (and in the moderators' Expired list) but aren't listed.
+    const where = ["d.status = 'active'", 'd.expired_at IS NULL'];
     const params = [];
     if (user) {
       where.push('NOT EXISTS (SELECT 1 FROM user_blocks ub WHERE ub.blocker_id = ? AND ub.blocked_id = d.submitted_by)');
@@ -139,7 +140,7 @@ export function createRepo(db, { amazonTag = null } = {}) {
     const offset = (page - 1) * limit;
     let rows;
     if (sort === 'hot') {
-      const all = await db.all(`${DEAL_SELECT} WHERE ${where.join(' AND ')} AND d.expired_at IS NULL ORDER BY d.created_at DESC LIMIT 2000`, ...params);
+      const all = await db.all(`${DEAL_SELECT} WHERE ${where.join(' AND ')} ORDER BY d.created_at DESC LIMIT 2000`, ...params);
       rows = rankHot(all).slice(offset, offset + limit + 1);
     } else {
       rows = await db.all(`${DEAL_SELECT} WHERE ${where.join(' AND ')} ORDER BY d.created_at DESC, d.id DESC LIMIT ? OFFSET ?`, ...params, limit + 1, offset);

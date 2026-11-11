@@ -207,13 +207,17 @@ test('end-to-end: auth, submit, dedup, vote, comment, bookmark, moderation', asy
     assert.equal((await adminUser.post(`/api/deals/${dealId}/expired`, { expired: false })).status, 200);
     assert.deepEqual(await queue(), []);
     await voter.post(`/api/deals/${dealId}/vote`, { value: 0 });
-    // A moderator confirms it: expired, in the Expired list, off the home page but still tagged in All deals.
+    // A moderator confirms it: expired, in the Expired list, off the home page and out of All deals
+    // (every sort, and search), but its own page still opens and says so.
     await voter.post(`/api/deals/${dealId}/vote`, { value: -1, reason: 'expired' });
     assert.equal((await adminUser.post(`/api/deals/${dealId}/expired`, { expired: true })).status, 200);
     assert.deepEqual([await queue(), await queue('?status=expired')], [[], [dealId]]);
     const onHome = async () => (await anon.get('/api/home')).data.latest.some((x) => x.id === dealId);
     assert.equal(await onHome(), false);
-    assert.ok((await anon.get('/api/deals')).data.items.some((x) => x.id === dealId && x.expired));
+    for (const qs of ['', '?sort=hot', `?q=${encodeURIComponent((await anon.get(`/api/deals/${dealId}`)).data.deal.title)}`]) {
+      assert.equal((await anon.get(`/api/deals${qs}`)).data.items.some((x) => x.id === dealId), false, `listed in /api/deals${qs}`);
+    }
+    assert.equal((await anon.get(`/api/deals/${dealId}`)).data.deal.expired, true);
     assert.equal((await voter.post(`/api/deals/${dealId}/vote`, { value: 0 })).data.expired, true, 'the decision outlasts the vote');
     await adminUser.post(`/api/deals/${dealId}/expired`, { expired: false });
     // Five different people: expired automatically, shown in the Expired list.
