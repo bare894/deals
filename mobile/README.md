@@ -4,6 +4,8 @@ The Android app is a [Capacitor](https://capacitorjs.com) shell. It opens the li
 
 Website changes reach the app as soon as they're deployed on Railway, **without a Play Store update**. You only need a new app release when something in `mobile/` changes.
 
+**Share to ShareDeals:** the app appears in Android's share sheet as *ShareDeals · Post a deal* for any shared text or link (Amazon, Flipkart, Chrome…). `MainActivity.fromShare` turns the share into `/submit?shared=<text>`. The site finds the deal link in that text (`linkFromSharedText` in `public/app.js`) and starts filling in the deal, or sends people to sign in first and then brings them back. Needs a new app release; the link-finding part updates with the website.
+
 **"Get the app" banner:** Android browser visitors see a banner on the website linking to the Play Store listing (`in.sharedeals.app`). If the app is installed, the button opens it instead. The banner is hidden inside the app, for 14 days after someone closes it, and when Chrome reports the app as installed. That last check uses `asset_statements` in `AndroidManifest.xml`, so it only works from the next app release on.
 
 **Light / Dark / System theme:** the choice itself lives on the website (top-bar toggle and Account → Appearance), so it works in already-installed apps once deployed. The native `AppTheme` plugin (`ThemePlugin.java`, registered in `MainActivity.java`) makes the status and navigation bars, splash screen and offline page follow the choice too; that part needs a new app release. Older installs simply keep system-coloured bars.

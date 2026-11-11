@@ -1268,9 +1268,24 @@ function bindDealForm(form, { url, onSubmit }) {
   });
 }
 
+/**
+ * The deal link in text shared to the app ("Check this out at Amazon … https://amzn.in/d/…"):
+ * the first web link, else a bare www./store-looking address. '' if there's none.
+ */
+function linkFromSharedText(text = '') {
+  const tidy = (u) => u.replace(/[)\].,;:!?'"»”’]+$/, '');
+  const full = String(text).match(/https?:\/\/[^\s<>"]+/i);
+  if (full) return tidy(full[0]);
+  const bare = String(text).match(/\b(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|in|co\.in|it|co|to)\/[^\s<>"]*/i);
+  return bare ? `https://${tidy(bare[0])}` : '';
+}
+
 async function submitPage({ query, alive }) {
   if (!state.user) return goLogin();
-  const initialUrl = query.get('url') || '';
+  // ?shared=… comes from Android's share sheet (MainActivity.fromShare), ?url=… from the extension.
+  const shared = query.get('shared');
+  const initialUrl = query.get('url') || (shared ? linkFromSharedText(shared) : '');
+  if (shared != null) track('share_to_app', { found_link: !!initialUrl });
   // What we know about the link being posted: the prefill result, plus anything already typed.
   const s = { url: '', fields: {}, ok: false, reason: null, matches: [], draft: null };
   const page = (content) => setPage('Post a deal', html`<div class="page-head"><h1>Post a deal</h1></div><div class="panel">${content}</div>`);
@@ -1420,8 +1435,12 @@ async function submitPage({ query, alive }) {
     });
   }
 
+  if (shared != null && !initialUrl) {
+    showUrlStep('', html`<div class="form-error">We couldn't find a link in what you shared. Copy the product link from the store app and paste it here.</div>`);
+    return;
+  }
   showUrlStep(initialUrl);
-  if (initialUrl) prefill(initialUrl); // e.g. opened from the browser extension
+  if (initialUrl) prefill(initialUrl); // e.g. opened from the browser extension or the share sheet
 }
 
 async function editPage({ params, alive }) {

@@ -30,6 +30,14 @@
                 <data android:scheme="@string/custom_url_scheme" android:host="auth" />
             </intent-filter>
 
+            <!-- Share sheet: "ShareDeals · Post a deal" when sharing text or a link from any app.
+                 MainActivity.fromShare turns it into /submit?shared=… on the site. -->
+            <intent-filter android:label="@string/share_target_label">
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+
             <!-- App Links: shared deal links open in the app. Verified via
                  https://<host>/.well-known/assetlinks.json (ANDROID_CERT_SHA256 on the server). -->
             <intent-filter android:autoVerify="true">

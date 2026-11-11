@@ -2,6 +2,8 @@
 <resources>
     <string name="app_name">ShareDeals</string>
     <string name="title_activity_main">ShareDeals</string>
+    <!-- Second line under "ShareDeals" in the share sheet. -->
+    <string name="share_target_label">Post a deal</string>
     <string name="package_name">in.sharedeals.app</string>
     <string name="custom_url_scheme">in.sharedeals.app</string>
     <!-- Lets www.sharedeals.in tell this app is installed (hides its "Get the app" banner). -->
